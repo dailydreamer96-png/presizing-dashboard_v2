@@ -6,181 +6,516 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # ─────────────────────────────────────────────────────────────
-# PAGE CONFIG
+# PAGE CONFIG — Streamlit's sidebar is permanently hidden;
+# we use our own collapsible top-bar inside the main content
+# (Streamlit cannot reliably toggle its sidebar from Python).
 # ─────────────────────────────────────────────────────────────
+if "show_filters" not in st.session_state:
+    st.session_state.show_filters = True
+
 st.set_page_config(
     page_title="Presizing · Operations Dashboard",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
 # ─────────────────────────────────────────────────────────────
-# DESIGN SYSTEM — Industrial precision theme
-# Palette: deep slate bg, warm white text, amber accent, emerald positive, rose negative
+# DESIGN SYSTEM — Dodger Blue · Soft slate-blue background
 # ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap');
 
   :root {
-    --bg:        #0f1117;
-    --surface:   #181c27;
-    --border:    #252a3a;
-    --amber:     #f5a623;
-    --amber-dim: #7a4f0a;
-    --emerald:   #34d399;
-    --rose:      #fb7185;
-    --slate:     #94a3b8;
-    --white:     #e8eaf2;
-    --card-h:    border-top: 3px solid var(--amber);
+    /* Brand */
+    --blue:       #1E90FF;   /* Dodger Blue */
+    --blue-dk:    #1270cc;   /* pressed / darker */
+    --blue-lt:    #dbeeff;   /* tint bg */
+    --blue-md:    #93c5fd;   /* mid tint for borders */
+
+    /* Background layers — soft blue-grey slate */
+    --bg:         #e8edf5;   /* page canvas */
+    --surface:    #f4f7fb;   /* card face */
+    --surface2:   #edf1f8;   /* input fill / alt rows */
+    --sidebar-bg: #1a2744;   /* sidebar dark navy */
+
+    /* Borders */
+    --border:     #d0d8e8;
+    --border-strong: #b8c4d8;
+
+    /* Status */
+    --emerald:    #059669;
+    --emerald-lt: #d1fae5;
+    --rose:       #dc2626;
+    --rose-lt:    #fee2e2;
+
+    /* Text — dark enough to pop on light bg */
+    --ink:        #0f1d35;   /* headings */
+    --ink-mid:    #2d3f5e;   /* body */
+    --ink-soft:   #4e6080;   /* secondary */
+    --ink-faint:  #7a90b0;   /* hints / labels */
   }
 
-  html, body, [data-testid="stAppViewContainer"] {
+  /* ── Global ─────────────────────────────────────── */
+  html, body,
+  [data-testid="stAppViewContainer"],
+  [data-testid="stMain"] {
     background: var(--bg) !important;
-    color: var(--white) !important;
-    font-family: 'Sora', sans-serif !important;
+    color: var(--ink) !important;
+    font-family: 'Inter', sans-serif !important;
+  }
+  [data-testid="stAppViewContainer"] > section > div:first-child { padding-top: 1.5rem !important; }
+  [data-testid="stHeader"]  { background: transparent !important; box-shadow: none !important; }
+
+  /* Hide Streamlit's developer toolbar AND main hamburger menu (3-dot kebab).
+     This menu is for "Rerun / Settings / Print / Record" and is irrelevant to operators.
+     Hiding it also frees up the top-left corner for our custom MENU button. */
+  [data-testid="stToolbarActions"],
+  [data-testid="stToolbar"],
+  [data-testid="stMainMenu"],
+  #MainMenu,
+  .stAppDeployButton,
+  [data-testid="stDecoration"],
+  [data-testid="stStatusWidget"] {
+    display: none !important;
+    visibility: hidden !important;
   }
 
-  [data-testid="stHeader"] { background: transparent !important; }
+  /* ── Streamlit's built-in sidebar entirely hidden ──
+     We replace it with our own collapsible nav-panel in the main content. */
+  [data-testid="stSidebar"],
+  [data-testid="stSidebarContent"],
+  [data-testid="stSidebarCollapseButton"],
+  [data-testid="stSidebarCollapsedControl"],
+  [data-testid="collapsedControl"],
+  button[kind="header"][data-testid="baseButton-header"],
+  button[kind="headerNoPadding"],
+  [data-testid="stSidebarHeader"] button {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+  }
 
-  /* Tab bar */
+  /* ── Our own nav panel — a dark navy bar in the main content ─ */
+  .nav-panel {
+    background: var(--sidebar-bg);
+    color: #ffffff;
+    border-radius: 12px;
+    padding: 18px 24px;
+    margin-bottom: 18px;
+    box-shadow: 0 4px 14px rgba(15, 29, 53, 0.12);
+  }
+  .nav-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 0;
+  }
+  .nav-panel-title {
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* Style any buttons inside the nav panel area (toggle button) */
+  .nav-toggle-btn-row [data-testid="stButton"] button {
+    background: var(--blue) !important;
+    color: #ffffff !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em !important;
+    padding: 10px 22px !important;
+    border-radius: 10px !important;
+    border: 2px solid #ffffff !important;
+    box-shadow: 0 3px 12px rgba(30,144,255,0.4) !important;
+    transition: all 0.15s ease !important;
+    width: 100%;
+  }
+  .nav-toggle-btn-row [data-testid="stButton"] button:hover {
+    background: var(--blue-dk) !important;
+    transform: translateY(-1px) !important;
+  }
+  .nav-toggle-btn-row [data-testid="stButton"] button p {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+  }
+
+  /* Filters area — light card on the page below the dark nav bar */
+  .filters-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 18px;
+    box-shadow: 0 1px 4px rgba(15, 29, 53, 0.04);
+  }
+  .filters-card-title {
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--blue);
+    display: inline-block;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────── */
+  [data-testid="stSidebar"] {
+    background: var(--sidebar-bg) !important;
+    border-right: none !important;
+  }
+  [data-testid="stSidebar"] * { color: #c8d8f0 !important; }
+  [data-testid="stSidebar"] h2,
+  [data-testid="stSidebar"] h3 { color: #ffffff !important; font-size: 0.85rem !important; font-weight: 700 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important; }
+  [data-testid="stSidebar"] hr { border-color: #2e4070 !important; }
+
+  /* (Native sidebar close button hidden — replaced by our st.button in Python) */
+
+  /* Sidebar selectbox */
+  [data-testid="stSidebar"] [data-testid="stSelectbox"] label {
+    color: #7a9fc8 !important;
+    font-size: 0.68rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+  }
+  [data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div {
+    background: #1e2f55 !important;
+    border: 1px solid #2e4070 !important;
+    border-radius: 8px !important;
+    color: #e0eaf8 !important;
+    font-size: 0.85rem !important;
+  }
+
+  /* Sidebar radio */
+  [data-testid="stSidebar"] [data-testid="stRadio"] label { color: #7a9fc8 !important; font-size: 0.68rem !important; font-weight: 600 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important; }
+  [data-testid="stSidebar"] [data-testid="stRadio"] > div > label {
+    background: #1e2f55 !important;
+    border: 1px solid #2e4070 !important;
+    border-radius: 8px !important;
+    color: #c8d8f0 !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    padding: 8px 14px !important;
+    transition: all 0.15s;
+  }
+  [data-testid="stSidebar"] [data-testid="stRadio"] > div > label:has(input:checked) {
+    background: var(--blue) !important;
+    border-color: var(--blue-dk) !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+  }
+
+
+  /* Sidebar section heading */
+  .sb-section {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #4e6a98;
+    padding: 12px 0 6px 0;
+    border-bottom: 1px solid #2e4070;
+    margin-bottom: 10px;
+  }
+
+  /* ── Main content tabs ───────────────────────────── */
   [data-testid="stTabs"] > div:first-child {
-    border-bottom: 1px solid var(--border) !important;
+    background: var(--surface) !important;
+    border-bottom: 2px solid var(--border) !important;
+    border-radius: 10px 10px 0 0 !important;
+    padding: 0 16px !important;
     gap: 0 !important;
   }
   [data-testid="stTabs"] button {
-    font-family: 'Sora', sans-serif !important;
-    font-size: 0.78rem !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.82rem !important;
     font-weight: 600 !important;
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase !important;
-    color: var(--slate) !important;
-    padding: 10px 24px !important;
+    letter-spacing: 0.04em !important;
+    color: var(--ink-soft) !important;
+    padding: 14px 22px !important;
     border-radius: 0 !important;
     border: none !important;
     background: transparent !important;
-    transition: color 0.2s;
+    transition: color 0.15s;
   }
   [data-testid="stTabs"] button[aria-selected="true"] {
-    color: var(--amber) !important;
-    border-bottom: 2px solid var(--amber) !important;
+    color: var(--blue) !important;
+    border-bottom: 3px solid var(--blue) !important;
     background: transparent !important;
   }
+  [data-testid="stTabs"] button:hover:not([aria-selected="true"]) {
+    color: var(--ink-mid) !important;
+    background: var(--blue-lt) !important;
+  }
 
-  /* Selectboxes / radios */
-  [data-testid="stSelectbox"] label,
-  [data-testid="stRadio"] label,
-  .stSelectbox label { color: var(--slate) !important; font-size: 0.72rem !important; letter-spacing: 0.05em; text-transform: uppercase; }
-  [data-testid="stSelectbox"] > div > div { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 6px !important; color: var(--white) !important; }
-
-  /* DataFrames */
-  [data-testid="stDataFrame"] { background: var(--surface) !important; border-radius: 8px !important; border: 1px solid var(--border) !important; overflow: hidden; }
-  [data-testid="stDataFrame"] table { font-family: 'DM Mono', monospace !important; font-size: 0.75rem !important; }
-  [data-testid="stDataFrame"] th { background: #1e2435 !important; color: var(--amber) !important; font-weight: 500 !important; }
-  [data-testid="stDataFrame"] tr:nth-child(even) td { background: #181c27 !important; }
-
-  /* Metrics */
-  [data-testid="metric-container"] {
+  /* ── Main selectboxes (filter row) ──────────────── */
+  [data-testid="stSelectbox"] label {
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+    color: var(--ink) !important;
+    margin-bottom: 4px !important;
+  }
+  [data-testid="stSelectbox"] > div > div {
     background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-top: 3px solid var(--amber) !important;
+    border: 1.5px solid var(--border-strong) !important;
     border-radius: 8px !important;
-    padding: 16px 20px !important;
+    color: var(--ink) !important;
+    font-size: 0.88rem !important;
+    font-family: 'Inter', sans-serif !important;
+    min-height: 40px !important;
   }
-  [data-testid="stMetricLabel"] { color: var(--slate) !important; font-size: 0.7rem !important; text-transform: uppercase !important; letter-spacing: 0.07em !important; }
-  [data-testid="stMetricValue"] { color: var(--white) !important; font-family: 'DM Mono', monospace !important; font-size: 1.5rem !important; font-weight: 500 !important; }
-  [data-testid="stMetricDelta"] svg { display: none !important; }
-  [data-testid="stMetricDelta"] > div { font-size: 0.72rem !important; font-family: 'DM Mono', monospace !important; }
+  [data-testid="stSelectbox"] > div > div:focus-within {
+    border-color: var(--blue) !important;
+    box-shadow: 0 0 0 3px rgba(30,144,255,0.15) !important;
+  }
 
-  /* Divider */
-  hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
+  /* ── DataFrames ─────────────────────────────────── */
+  [data-testid="stDataFrame"] {
+    background: var(--surface) !important;
+    border-radius: 10px !important;
+    border: 1px solid var(--border) !important;
+    overflow: hidden;
+  }
+  [data-testid="stDataFrame"] table { font-family: 'DM Mono', monospace !important; font-size: 0.82rem !important; }
+  [data-testid="stDataFrame"] th {
+    background: var(--sidebar-bg) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 0.03em !important;
+  }
+  [data-testid="stDataFrame"] tr:nth-child(even) td { background: var(--surface2) !important; }
+  [data-testid="stDataFrame"] td { color: var(--ink) !important; }
 
-  /* Info boxes */
-  [data-testid="stInfo"] { background: #1a2236 !important; border-left: 3px solid var(--amber) !important; color: var(--slate) !important; border-radius: 4px; font-size: 0.8rem; }
+  /* ── Divider ────────────────────────────────────── */
+  hr { border-color: var(--border) !important; margin: 1.4rem 0 !important; }
 
-  /* Radio inline */
-  [data-testid="stRadio"] > div { gap: 6px !important; }
-  [data-testid="stRadio"] > div > label { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 6px !important; padding: 6px 14px !important; color: var(--slate) !important; font-size: 0.75rem !important; transition: all 0.15s; }
-  [data-testid="stRadio"] > div > label:has(input:checked) { border-color: var(--amber) !important; color: var(--amber) !important; background: rgba(245,166,35,0.08) !important; }
+  /* ── Info box ───────────────────────────────────── */
+  [data-testid="stInfo"] {
+    background: var(--blue-lt) !important;
+    border-left: 4px solid var(--blue) !important;
+    color: var(--ink) !important;
+    border-radius: 6px;
+    font-size: 0.88rem !important;
+    padding: 12px 16px !important;
+  }
+  [data-testid="stInfo"] p, [data-testid="stInfo"] div {
+    color: var(--ink) !important;
+    font-size: 0.88rem !important;
+  }
 
-  /* Section headings via markdown */
+  /* Main content radio buttons (e.g. Mode page direction toggle) */
+  [data-testid="stMain"] [data-testid="stRadio"] label {
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+    color: var(--ink) !important;
+  }
+  [data-testid="stMain"] [data-testid="stRadio"] > div { gap: 8px !important; flex-wrap: wrap !important; }
+  [data-testid="stMain"] [data-testid="stRadio"] > div > label {
+    background: var(--surface) !important;
+    border: 1.5px solid var(--border-strong) !important;
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+    color: var(--ink-mid) !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    transition: all 0.15s;
+    cursor: pointer;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+  }
+  [data-testid="stMain"] [data-testid="stRadio"] > div > label:has(input:checked) {
+    border-color: var(--blue) !important;
+    color: var(--blue-dk) !important;
+    background: var(--blue-lt) !important;
+    font-weight: 700 !important;
+  }
+
+  /* ── Force readable text colors based on background ───
+     Light backgrounds (cards, page) → DARK text
+     Dark backgrounds (header, sidebar) → WHITE text */
+
+  /* Default body text on light page */
+  [data-testid="stMain"] p,
+  [data-testid="stMain"] li,
+  [data-testid="stMain"] [data-testid="stMarkdownContainer"] p,
+  [data-testid="stMain"] [data-testid="stMarkdownContainer"] li,
+  [data-testid="stMain"] [data-testid="stMarkdownContainer"] strong,
+  [data-testid="stMain"] [data-testid="stMarkdownContainer"] em {
+    color: var(--ink) !important;
+  }
+  [data-testid="stMain"] [data-testid="stCaptionContainer"],
+  [data-testid="stMain"] .stCaption,
+  [data-testid="stMain"] [data-testid="stCaptionContainer"] p {
+    color: var(--ink-mid) !important;
+    font-size: 0.88rem !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Headings on the light page area — but NOT inside the dark page-header */
+  [data-testid="stMain"] :not(.page-header) > h1,
+  [data-testid="stMain"] :not(.page-header) > h2,
+  [data-testid="stMain"] :not(.page-header) > h3,
+  [data-testid="stMain"] :not(.page-header) > h4 {
+    color: var(--ink) !important;
+  }
+  [data-testid="stMain"] h2 { font-size: 1.5rem !important; font-weight: 700 !important; }
+  [data-testid="stMain"] h3 { font-size: 1.2rem !important; font-weight: 700 !important; }
+  [data-testid="stMain"] h4 { font-size: 1.05rem !important; font-weight: 700 !important; }
+
+  /* Step 1 / Step 2 markdown bold labels — dark on white */
+  [data-testid="stMain"] [data-testid="stMarkdownContainer"] strong {
+    color: var(--ink) !important;
+    font-weight: 700 !important;
+  }
+
+  /* ── Section title ──────────────────── */
   .section-title {
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--amber);
-    margin-bottom: 10px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 6px;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+    color: var(--ink) !important;
+    margin-bottom: 14px !important;
+    padding-bottom: 8px !important;
+    border-bottom: 3px solid var(--blue) !important;
+    display: inline-block !important;
   }
+
+  /* ── KPI cards ──────────────────────────────────── */
   .kpi-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-top: 3px solid var(--amber);
-    border-radius: 8px;
+    border-left: 5px solid var(--blue);
+    border-radius: 10px;
     padding: 18px 22px;
     margin-bottom: 10px;
+    box-shadow: 0 2px 6px rgba(15,29,53,0.06);
   }
-  .kpi-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--slate); margin-bottom: 4px; }
-  .kpi-value { font-family: 'DM Mono', monospace; font-size: 1.6rem; font-weight: 500; color: var(--white); }
-  .kpi-delta { font-family: 'DM Mono', monospace; font-size: 0.7rem; margin-top: 4px; }
+  .kpi-label {
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    color: var(--ink-soft) !important;
+    margin-bottom: 7px !important;
+  }
+  .kpi-value {
+    font-family: 'DM Mono', monospace !important;
+    font-size: 1.75rem !important;
+    font-weight: 500 !important;
+    color: var(--ink) !important;
+    line-height: 1.2 !important;
+  }
+  .kpi-delta {
+    font-family: 'DM Mono', monospace !important;
+    font-size: 0.72rem !important;
+    margin-top: 6px !important;
+  }
   .kpi-delta.up   { color: var(--emerald); }
   .kpi-delta.down { color: var(--rose); }
-  .kpi-delta.neu  { color: var(--slate); }
+  .kpi-delta.neu  { color: var(--ink-faint); }
 
-  .insight-tag {
-    display: inline-block;
-    background: rgba(245,166,35,0.1);
-    border: 1px solid var(--amber-dim);
-    color: var(--amber);
-    font-size: 0.7rem;
-    font-family: 'DM Mono', monospace;
-    padding: 3px 10px;
-    border-radius: 100px;
-    margin: 3px 3px 3px 0;
-  }
+  /* ── Alert / good cards ─────────────────────────── */
   .alert-card {
-    background: rgba(251,113,133,0.07);
-    border: 1px solid rgba(251,113,133,0.3);
+    background: var(--rose-lt);
+    border: 1px solid #fca5a5;
+    border-left: 4px solid var(--rose);
     border-radius: 8px;
     padding: 12px 16px;
     margin-bottom: 8px;
-    font-size: 0.78rem;
-    color: var(--rose);
+    font-size: 0.88rem;
+    color: #7f1d1d;
+    font-weight: 500;
   }
   .good-card {
-    background: rgba(52,211,153,0.07);
-    border: 1px solid rgba(52,211,153,0.3);
+    background: var(--emerald-lt);
+    border: 1px solid #6ee7b7;
+    border-left: 4px solid var(--emerald);
     border-radius: 8px;
     padding: 12px 16px;
     margin-bottom: 8px;
-    font-size: 0.78rem;
-    color: var(--emerald);
+    font-size: 0.88rem;
+    color: #065f46;
+    font-weight: 500;
   }
+
+  /* ── Page header ────────────────────────────────── */
   .page-header {
-    display: flex; align-items: baseline; gap: 16px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 14px;
+    background: var(--sidebar-bg);
+    border-radius: 14px;
+    padding: 26px 32px;
+    margin-bottom: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 4px 16px rgba(15,29,53,0.12);
   }
-  .page-header h1 {
-    font-family: 'Sora', sans-serif;
-    font-size: 1.35rem;
-    font-weight: 700;
-    color: var(--white);
-    margin: 0;
-    letter-spacing: -0.01em;
+  .page-header-left { display: flex; flex-direction: column; gap: 8px; }
+  .page-header h1,
+  [data-testid="stMain"] .page-header h1 {
+    font-family: 'Inter', sans-serif !important;
+    font-size: 2.1rem !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    margin: 0 !important;
+    letter-spacing: -0.03em !important;
+    line-height: 1.1 !important;
   }
-  .page-header span {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--slate);
+  .page-header h1 span,
+  [data-testid="stMain"] .page-header h1 span {
+    color: var(--blue) !important;
   }
-  .badge {
-    display:inline-block; padding:2px 8px; border-radius:4px;
-    font-size:0.65rem; font-family:'DM Mono',monospace; font-weight:500;
-    background:rgba(245,166,35,0.15); color:var(--amber); letter-spacing:0.04em;
+  .page-header .subtitle,
+  [data-testid="stMain"] .page-header .subtitle {
+    font-family: 'Inter', sans-serif !important;
+    font-size: 1.05rem !important;
+    color: #b8cce8 !important;
+    margin: 0 !important;
+    font-weight: 400 !important;
+  }
+  .page-header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .header-badge {
+    background: var(--blue) !important;
+    color: #ffffff !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+    padding: 5px 14px !important;
+    border-radius: 20px !important;
+    letter-spacing: 0.06em !important;
+  }
+  .header-meta {
+    font-family: 'DM Mono', monospace !important;
+    font-size: 0.75rem !important;
+    color: #b8cce8 !important;
+  }
+
+  /* ── Insight tag ────────────────────────────────── */
+  .insight-tag {
+    display: inline-block;
+    background: var(--blue-lt);
+    border: 1.5px solid var(--blue-md);
+    color: var(--blue-dk);
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    padding: 4px 12px;
+    border-radius: 100px;
+    margin: 3px 3px 3px 0;
   }
 </style>
 """, unsafe_allow_html=True)
@@ -190,23 +525,26 @@ st.markdown("""
 # ─────────────────────────────────────────────────────────────
 PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="#181c27",
-    font=dict(family="DM Mono, monospace", color="#94a3b8", size=11),
-    title_font=dict(family="Sora, sans-serif", color="#e8eaf2", size=13),
-    xaxis=dict(gridcolor="#252a3a", linecolor="#252a3a", tickfont=dict(size=10)),
-    yaxis=dict(gridcolor="#252a3a", linecolor="#252a3a", tickfont=dict(size=10)),
+    plot_bgcolor="#f4f7fb",
+    font=dict(family="Inter, sans-serif", color="#4e6080", size=12),
+    title_font=dict(family="Inter, sans-serif", color="#0f1d35", size=14),
+    xaxis=dict(gridcolor="#d0d8e8", linecolor="#d0d8e8", tickfont=dict(size=11), tickcolor="#7a90b0"),
+    yaxis=dict(gridcolor="#d0d8e8", linecolor="#d0d8e8", tickfont=dict(size=11), tickcolor="#7a90b0"),
     margin=dict(l=20, r=20, t=44, b=20),
     hovermode="x unified",
-    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
+    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11, color="#2d3f5e")),
 )
-AMBER = "#f5a623"
-EMERALD = "#34d399"
-ROSE = "#fb7185"
-BLUE = "#60a5fa"
-PURPLE = "#a78bfa"
-SLATE = "#94a3b8"
+BLUE     = "#1E90FF"   # Dodger Blue — primary
+BLUE_DK  = "#1270cc"
+NAVY     = "#1a2744"
+EMERALD  = "#059669"
+ROSE     = "#dc2626"
+AMBER    = "#d97706"
+PURPLE   = "#7c3aed"
+SLATE    = "#4e6080"
 
-COLOR_SEQ = [AMBER, BLUE, EMERALD, PURPLE, ROSE, "#f9a8d4", "#fcd34d", "#6ee7b7"]
+# Brand-led color sequence (Dodger blue first)
+COLOR_SEQ = [BLUE, NAVY, EMERALD, AMBER, ROSE, PURPLE, "#0891b2", "#db2777"]
 
 # ─────────────────────────────────────────────────────────────
 # HELPERS
@@ -369,31 +707,216 @@ date_str = latest_date.strftime("%d %b %Y") if pd.notna(latest_date) else "N/A"
 
 st.markdown(f"""
 <div class="page-header">
-  <h1>🍎 Presizing Operations</h1>
-  <span>Updated {date_str} &nbsp;·&nbsp; {len(runs):,} runs recorded</span>
+  <div class="page-header-left">
+    <h1>🍎 Presizing <span>Operations</span></h1>
+    <p class="subtitle">Apple Packing · Presizing Department · Production Intelligence Dashboard</p>
+  </div>
+  <div class="page-header-right">
+    <span class="header-badge">LIVE DATA</span>
+    <span class="header-meta">Last run: {date_str} &nbsp;·&nbsp; {len(runs):,} runs on record</span>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-# TABS
+# NAVIGATION PANEL (dark navy bar) + page tabs + filters toggle
 # ─────────────────────────────────────────────────────────────
-tab_summary, tab_quality, tab_mode, tab_operators = st.tabs([
-    "📊  Summary", "🍏  Quality", "⚙️  Mode", "👷  Operators"
-])
+st.markdown('<div class="nav-panel"><div class="nav-panel-header"><span class="nav-panel-title">Navigation</span></div></div>', unsafe_allow_html=True)
+
+# Page tabs as a horizontal radio
+nav_col1, nav_col2 = st.columns([5, 1])
+with nav_col1:
+    page = st.radio(
+        "Page",
+        ["📊  Summary", "🍏  Quality", "⚙️  Mode", "👷  Operators"],
+        label_visibility="collapsed",
+        horizontal=True,
+        key="nav_page",
+    )
+with nav_col2:
+    st.markdown('<div class="nav-toggle-btn-row">', unsafe_allow_html=True)
+    toggle_label = "✕  HIDE FILTERS" if st.session_state.show_filters else "☰  SHOW FILTERS"
+    if st.button(toggle_label, key="filters_toggle_btn", use_container_width=True):
+        st.session_state.show_filters = not st.session_state.show_filters
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────
+# FILTERS — shown only when show_filters is True
+# Each page has its own context-aware filter set.
+# ─────────────────────────────────────────────────────────────
+if st.session_state.show_filters:
+    st.markdown('<div class="filters-card"><div class="filters-card-title">Filters</div>', unsafe_allow_html=True)
+
+    if page.endswith("Summary"):
+        f1, f2, f3, f4 = st.columns(4)
+        with f1:
+            period_choice = st.radio(
+                "View by",
+                ["Yearly", "Monthly", "Weekly"],
+                horizontal=True,
+                key="s_period",
+            )
+        summary_df = runs.dropna(subset=["run_date"]).copy()
+
+        if period_choice == "Yearly":
+            summary_df["year"] = summary_df["run_date"].dt.year.astype(int)
+            available_years = sorted(summary_df["year"].dropna().unique(), reverse=True)
+            with f2:
+                selected_year = st.selectbox("📅  Year", available_years, key="s_year")
+
+        elif period_choice == "Monthly":
+            summary_df["year"] = summary_df["run_date"].dt.year.astype(int)
+            summary_df["month_num"] = summary_df["run_date"].dt.month
+            summary_df["month_name"] = summary_df["run_date"].dt.strftime("%b")
+            summary_df["month_label"] = summary_df["run_date"].dt.to_period("M").astype(str)
+            available_years = sorted(summary_df["year"].dropna().unique(), reverse=True)
+            with f2:
+                selected_year = st.selectbox("📅  Year", available_years, key="s_year_m")
+            year_df = summary_df[summary_df["year"] == selected_year].copy()
+            available_months = year_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
+            with f3:
+                sel_month_raw = st.selectbox("📅  Month", ["All months"] + available_months, key="s_month")
+            selected_month = None if sel_month_raw == "All months" else sel_month_raw
+
+        else:  # Weekly
+            summary_df["month_label"] = summary_df["run_date"].dt.to_period("M").astype(str)
+            summary_df["week_start"] = summary_df["run_date"] - pd.to_timedelta(summary_df["run_date"].dt.weekday, unit="D")
+            summary_df["week_label"] = "W/C " + summary_df["week_start"].dt.strftime("%Y-%m-%d")
+            available_months = summary_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
+            with f2:
+                sel_month_raw = st.selectbox("📅  Month", ["All months"] + available_months, key="s_month_w")
+            selected_month = None if sel_month_raw == "All months" else sel_month_raw
+            month_df = summary_df.copy() if selected_month is None else summary_df[summary_df["month_label"] == selected_month].copy()
+            available_weeks = month_df[["week_label","week_start"]].drop_duplicates().sort_values("week_start")["week_label"].tolist()
+            with f3:
+                sel_week_raw = st.selectbox("📅  Week", ["All weeks"] + available_weeks, key="s_week")
+            selected_week = None if sel_week_raw == "All weeks" else sel_week_raw
+
+    elif page.endswith("Quality"):
+        f1, f2, f3 = st.columns(3)
+        quality_runs = runs.copy()
+        quality_runs["month_label"] = quality_runs["run_date"].dt.to_period("M").astype(str)
+        with f1:
+            selected_variety = st.selectbox(
+                "🍎  Variety",
+                ["All varieties"] + sorted(quality_runs["variety"].dropna().astype(str).unique()),
+                key="q_var",
+            )
+        with f2:
+            selected_grower = st.selectbox(
+                "🌿  Grower",
+                ["All growers"] + sorted(quality_runs["grower"].dropna().astype(str).unique()),
+                key="q_grower",
+            )
+        with f3:
+            selected_quality_month = st.selectbox(
+                "📅  Month",
+                ["All months"] + sorted(quality_runs["month_label"].dropna().astype(str).unique(), reverse=True),
+                key="q_month",
+            )
+
+    elif page.endswith("Mode"):
+        if changes is not None:
+            mode_df_pre = changes.copy()
+            if "run_id" in mode_df_pre.columns and "run_id" in runs.columns:
+                mode_df_pre = mode_df_pre.merge(
+                    runs[["run_id","batch_id","grower","variety","run_date"]],
+                    on="run_id", how="left", suffixes=("","_run")
+                )
+            if batches is not None and "batch_id" in mode_df_pre.columns and "batch_id" in batches.columns:
+                bcols = [c for c in ["batch_id","grower","variety","decfile_version","defect_1","defect_2","defect_3"] if c in batches.columns]
+                mode_df_pre = mode_df_pre.merge(batches[bcols], on="batch_id", how="left", suffixes=("","_batch"))
+            for col in ["grower","variety","decfile_version","mode","check_class","reason","action","sensitivity","accuracy"]:
+                if col in mode_df_pre.columns:
+                    mode_df_pre[col] = mode_df_pre[col].fillna("").astype(str).str.strip().replace("", pd.NA)
+
+            f1, f2, f3 = st.columns(3)
+            with f1:
+                av = ["All varieties"] + sorted(mode_df_pre["variety"].dropna().astype(str).unique()) if "variety" in mode_df_pre.columns else ["All varieties"]
+                selected_mode_variety = st.selectbox("🍎  Variety", av, key="m_var")
+
+            mode_temp = mode_df_pre.copy()
+            if selected_mode_variety != "All varieties" and "variety" in mode_temp.columns:
+                mode_temp = mode_temp[mode_temp["variety"].astype(str) == selected_mode_variety]
+
+            with f2:
+                ag = ["All growers"] + sorted(mode_temp["grower"].dropna().astype(str).unique()) if "grower" in mode_temp.columns else ["All growers"]
+                selected_mode_grower = st.selectbox("🌿  Grower", ag, key="m_grower")
+            if selected_mode_grower != "All growers" and "grower" in mode_temp.columns:
+                mode_temp = mode_temp[mode_temp["grower"].astype(str) == selected_mode_grower]
+
+            with f3:
+                aver = ["All versions"] + sorted(mode_temp["decfile_version"].dropna().astype(str).unique()) if "decfile_version" in mode_temp.columns else ["All versions"]
+                selected_version = st.selectbox("📋  Dec File Version", aver, key="m_ver")
+        else:
+            selected_mode_variety = "All varieties"
+            selected_mode_grower = "All growers"
+            selected_version = "All versions"
+
+    elif page.endswith("Operators"):
+        f1, f2 = st.columns(2)
+        ops_pre = runs.copy()
+        ops_pre["month_label"] = ops_pre["run_date"].dt.to_period("M").astype(str)
+        with f1:
+            month_opts = sorted(ops_pre["month_label"].dropna().astype(str).unique(), reverse=True)
+            sel_op_month = st.selectbox("📅  Month", ["All months"] + month_opts, key="op_month")
+        with f2:
+            variety_opts = sorted(ops_pre["variety"].dropna().astype(str).unique()) if "variety" in ops_pre.columns else []
+            sel_op_var = st.selectbox("🍎  Variety", ["All varieties"] + variety_opts, key="op_var")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+else:
+    # Filters hidden — still need to compute the values from session state defaults
+    if page.endswith("Summary"):
+        period_choice = st.session_state.get("s_period", "Yearly")
+        summary_df = runs.dropna(subset=["run_date"]).copy()
+        summary_df["year"] = summary_df["run_date"].dt.year.astype(int)
+        if period_choice == "Yearly":
+            available_years = sorted(summary_df["year"].dropna().unique(), reverse=True)
+            selected_year = st.session_state.get("s_year", available_years[0] if available_years else None)
+        elif period_choice == "Monthly":
+            summary_df["month_num"] = summary_df["run_date"].dt.month
+            summary_df["month_name"] = summary_df["run_date"].dt.strftime("%b")
+            summary_df["month_label"] = summary_df["run_date"].dt.to_period("M").astype(str)
+            available_years = sorted(summary_df["year"].dropna().unique(), reverse=True)
+            selected_year = st.session_state.get("s_year_m", available_years[0] if available_years else None)
+            year_df = summary_df[summary_df["year"] == selected_year].copy()
+            available_months = year_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
+            sel_month_raw = st.session_state.get("s_month", "All months")
+            selected_month = None if sel_month_raw == "All months" else sel_month_raw
+        else:
+            summary_df["month_label"] = summary_df["run_date"].dt.to_period("M").astype(str)
+            summary_df["week_start"] = summary_df["run_date"] - pd.to_timedelta(summary_df["run_date"].dt.weekday, unit="D")
+            summary_df["week_label"] = "W/C " + summary_df["week_start"].dt.strftime("%Y-%m-%d")
+            available_months = summary_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
+            sel_month_raw = st.session_state.get("s_month_w", "All months")
+            selected_month = None if sel_month_raw == "All months" else sel_month_raw
+            month_df = summary_df.copy() if selected_month is None else summary_df[summary_df["month_label"] == selected_month].copy()
+            available_weeks = month_df[["week_label","week_start"]].drop_duplicates().sort_values("week_start")["week_label"].tolist()
+            sel_week_raw = st.session_state.get("s_week", "All weeks")
+            selected_week = None if sel_week_raw == "All weeks" else sel_week_raw
+    elif page.endswith("Quality"):
+        quality_runs = runs.copy()
+        quality_runs["month_label"] = quality_runs["run_date"].dt.to_period("M").astype(str)
+        selected_variety = st.session_state.get("q_var", "All varieties")
+        selected_grower = st.session_state.get("q_grower", "All growers")
+        selected_quality_month = st.session_state.get("q_month", "All months")
+    elif page.endswith("Mode"):
+        selected_mode_variety = st.session_state.get("m_var", "All varieties")
+        selected_mode_grower = st.session_state.get("m_grower", "All growers")
+        selected_version = st.session_state.get("m_ver", "All versions")
+    elif page.endswith("Operators"):
+        sel_op_month = st.session_state.get("op_month", "All months")
+        sel_op_var = st.session_state.get("op_var", "All varieties")
 
 # ═══════════════════════════════════════════════════════════════
-# SUMMARY TAB
+# SUMMARY PAGE
 # ═══════════════════════════════════════════════════════════════
-with tab_summary:
+if page.endswith("Summary"):
 
-    # ── Period selector ─────────────────────────────────────
-    fc1, fc2, fc3 = st.columns([1, 1, 3])
-    with fc1:
-        period_choice = st.radio("View by", ["Yearly","Monthly","Weekly"], horizontal=True)
-    with fc2:
-        pass  # spacer
-
-    summary_df = runs.dropna(subset=["run_date"]).copy()
+    # Sub-page banner
+    st.markdown('<div class="section-title">Production Summary</div>', unsafe_allow_html=True)
 
     def format_delta(current, previous, mode="number"):
         if pd.isna(current) or pd.isna(previous): return "N/A"
@@ -403,32 +926,22 @@ with tab_summary:
         if mode == "float": return f"{current-previous:+.1f} vs prev"
         return f"{int(current-previous):+,.0f} vs prev"
 
-    # ── Period slicing ───────────────────────────────────────
+    # ── Period slicing (filters come from sidebar) ───────────
     if period_choice == "Yearly":
-        summary_df["year"] = summary_df["run_date"].dt.year.astype(int)
-        available_years = sorted(summary_df["year"].dropna().unique(), reverse=True)
-        selected_year = st.selectbox("Year", available_years, key="s_year")
         chart_df = summary_df.groupby("year", as_index=False)["bins_run"].sum().sort_values("year")
         summary_filtered = summary_df[summary_df["year"] == selected_year].copy()
         selected_period_label = str(selected_year)
         prev_year = selected_year - 1
         previous_filtered = summary_df[summary_df["year"] == prev_year].copy()
+        prev_month = prev_week = None
 
     elif period_choice == "Monthly":
-        summary_df["year"] = summary_df["run_date"].dt.year.astype(int)
-        summary_df["month_num"] = summary_df["run_date"].dt.month
-        summary_df["month_name"] = summary_df["run_date"].dt.strftime("%b")
-        summary_df["month_label"] = summary_df["run_date"].dt.to_period("M").astype(str)
-        available_years = sorted(summary_df["year"].dropna().unique(), reverse=True)
-        selected_year = st.selectbox("Year", available_years, key="s_year_m")
         year_df = summary_df[summary_df["year"] == selected_year].copy()
-        available_months = year_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
-        selected_month = st.selectbox("Month", ["All"] + available_months, key="s_month")
         chart_df = (summary_df.groupby(["year","month_num","month_name"], as_index=False)["bins_run"]
                     .sum().sort_values(["month_num","year"], ascending=[True, False]))
-        if selected_month == "All":
+        if selected_month is None:
             summary_filtered = year_df.copy()
-            selected_period_label = f"{selected_year} (All)"
+            selected_period_label = f"{selected_year} (All months)"
             previous_filtered = pd.DataFrame()
             prev_month = None
         else:
@@ -437,20 +950,15 @@ with tab_summary:
             idx = available_months.index(selected_month)
             prev_month = available_months[idx-1] if idx > 0 else None
             previous_filtered = year_df[year_df["month_label"] == prev_month].copy() if prev_month else pd.DataFrame()
+        prev_week = None
+        prev_year = None
 
     else:  # Weekly
-        summary_df["month_label"] = summary_df["run_date"].dt.to_period("M").astype(str)
-        summary_df["week_start"] = summary_df["run_date"] - pd.to_timedelta(summary_df["run_date"].dt.weekday, unit="D")
-        summary_df["week_label"] = "W/C " + summary_df["week_start"].dt.strftime("%Y-%m-%d")
-        available_months = summary_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
-        selected_month = st.selectbox("Month", ["All"] + available_months, key="s_month_w")
-        month_df = summary_df.copy() if selected_month == "All" else summary_df[summary_df["month_label"] == selected_month].copy()
-        available_weeks = month_df[["week_label","week_start"]].drop_duplicates().sort_values("week_start")["week_label"].tolist()
-        selected_week = st.selectbox("Week", ["All"] + available_weeks, key="s_week")
+        month_df = summary_df.copy() if selected_month is None else summary_df[summary_df["month_label"] == selected_month].copy()
         chart_df = month_df.groupby(["week_label","week_start"], as_index=False)["bins_run"].sum().sort_values("week_start")
-        if selected_week == "All":
+        if selected_week is None:
             summary_filtered = month_df.copy()
-            selected_period_label = f"{selected_month} (All)" if selected_month != "All" else "All"
+            selected_period_label = f"{selected_month} (All weeks)" if selected_month else "All weeks"
             previous_filtered = pd.DataFrame()
             prev_week = None
         else:
@@ -459,6 +967,8 @@ with tab_summary:
             idx = available_weeks.index(selected_week)
             prev_week = available_weeks[idx-1] if idx > 0 else None
             previous_filtered = month_df[month_df["week_label"] == prev_week].copy() if prev_week else pd.DataFrame()
+        prev_month = None
+        prev_year = None
 
     # ── Downtime filter ─────────────────────────────────────
     downtime_filtered = pd.DataFrame()
@@ -472,12 +982,12 @@ with tab_summary:
         elif period_choice == "Monthly":
             dtf["year"] = dtf["run_date"].dt.year.astype(int)
             dtf["month_label"] = dtf["run_date"].dt.to_period("M").astype(str)
-            cur_dt = dtf[dtf["month_label"] == selected_month] if selected_month != "All" else dtf[dtf["year"] == selected_year]
-            prv_dt = dtf[dtf["month_label"] == prev_month] if (selected_month != "All" and prev_month) else pd.DataFrame()
+            cur_dt = dtf[dtf["month_label"] == selected_month] if selected_month else dtf[dtf["year"] == selected_year]
+            prv_dt = dtf[dtf["month_label"] == prev_month] if (selected_month and prev_month) else pd.DataFrame()
         else:
             dtf["week_label"] = "W/C " + (dtf["run_date"] - pd.to_timedelta(dtf["run_date"].dt.weekday, unit="D")).dt.strftime("%Y-%m-%d")
-            cur_dt = dtf[dtf["week_label"] == selected_week] if selected_week != "All" else dtf
-            prv_dt = dtf[dtf["week_label"] == prev_week] if (selected_week != "All" and prev_week) else pd.DataFrame()
+            cur_dt = dtf[dtf["week_label"] == selected_week] if selected_week else dtf
+            prv_dt = dtf[dtf["week_label"] == prev_week] if (selected_week and prev_week) else pd.DataFrame()
         downtime_filtered = cur_dt.copy()
         current_downtime = cur_dt["duration_hours"].sum() if "duration_hours" in cur_dt.columns else None
         prev_downtime = prv_dt["duration_hours"].sum() if ("duration_hours" in prv_dt.columns and not prv_dt.empty) else None
@@ -538,7 +1048,8 @@ with tab_summary:
         else:
             fig = px.bar(chart_df, x="week_label", y="bins_run", color_discrete_sequence=[AMBER])
 
-        fig.update_traces(hovertemplate="%{y:,.0f} bins")
+        fig.update_traces(hovertemplate="%{y:,.0f} bins<extra></extra>", name="")
+        fig.update_layout(showlegend=(period_choice == "Monthly"))
         apply_plot_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
@@ -616,7 +1127,7 @@ with tab_summary:
     available_varieties = sorted(summary_filtered["variety"].dropna().astype(str).unique().tolist())
     sv1, sv2 = st.columns([1, 4])
     with sv1:
-        selected_summary_variety = st.selectbox("Select Variety", available_varieties or ["N/A"], key="sum_var")
+        selected_summary_variety = st.selectbox("🍎  Variety", available_varieties or ["No data"], key="sum_var")
     variety_filtered = summary_filtered[summary_filtered["variety"].astype(str) == selected_summary_variety].copy()
 
     vbph = None
@@ -697,25 +1208,15 @@ with tab_summary:
             st.info("No downtime recorded for this period.")
 
 # ═══════════════════════════════════════════════════════════════
-# QUALITY TAB
+# QUALITY PAGE
 # ═══════════════════════════════════════════════════════════════
-with tab_quality:
-    quality_runs = runs.copy()
-    quality_runs["month_label"] = quality_runs["run_date"].dt.to_period("M").astype(str)
-
-    # ── Filters ─────────────────────────────────────────────
-    qf1, qf2, qf3 = st.columns(3)
-    with qf1:
-        selected_variety = st.selectbox("Variety", ["All"] + sorted(quality_runs["variety"].dropna().astype(str).unique()), key="q_var")
-    with qf2:
-        selected_grower = st.selectbox("Grower", ["All"] + sorted(quality_runs["grower"].dropna().astype(str).unique()), key="q_grower")
-    with qf3:
-        selected_quality_month = st.selectbox("Month", ["All"] + sorted(quality_runs["month_label"].dropna().astype(str).unique(), reverse=True), key="q_month")
+elif page.endswith("Quality"):
+    st.markdown('<div class="section-title">Quality Performance</div>', unsafe_allow_html=True)
 
     quality_filtered = quality_runs.copy()
-    if selected_variety != "All": quality_filtered = quality_filtered[quality_filtered["variety"].astype(str) == selected_variety]
-    if selected_grower != "All":  quality_filtered = quality_filtered[quality_filtered["grower"].astype(str) == selected_grower]
-    if selected_quality_month != "All": quality_filtered = quality_filtered[quality_filtered["month_label"].astype(str) == selected_quality_month]
+    if selected_variety != "All varieties": quality_filtered = quality_filtered[quality_filtered["variety"].astype(str) == selected_variety]
+    if selected_grower != "All growers":  quality_filtered = quality_filtered[quality_filtered["grower"].astype(str) == selected_grower]
+    if selected_quality_month != "All months": quality_filtered = quality_filtered[quality_filtered["month_label"].astype(str) == selected_quality_month]
 
     # ── Quality rate KPIs ───────────────────────────────────
     rate_cols = [c for c in ["premium_rate","c1_color_rate","c1_quality_rate","c2_color_rate","c2_quality_rate","no_color_rate","juice_rate"] if c in quality_filtered.columns]
@@ -830,9 +1331,9 @@ with tab_quality:
 
     if batches is not None:
         batch_filtered = batches.copy()
-        if selected_variety != "All" and "variety" in batch_filtered.columns:
+        if selected_variety != "All varieties" and "variety" in batch_filtered.columns:
             batch_filtered = batch_filtered[batch_filtered["variety"].astype(str) == selected_variety]
-        if selected_grower != "All" and "grower" in batch_filtered.columns:
+        if selected_grower != "All growers" and "grower" in batch_filtered.columns:
             batch_filtered = batch_filtered[batch_filtered["grower"].astype(str) == selected_grower]
         defect_cols = [c for c in ["defect_1","defect_2","defect_3"] if c in batch_filtered.columns]
         if defect_cols:
@@ -844,7 +1345,7 @@ with tab_quality:
 
     if changes is not None:
         ch = changes.copy()
-        if selected_variety != "All" and "variety" in ch.columns:
+        if selected_variety != "All varieties" and "variety" in ch.columns:
             ch = ch[ch["variety"].astype(str) == selected_variety]
         run_ids = quality_filtered["run_id"].dropna().astype(str).unique().tolist()
         if "run_id" in ch.columns:
@@ -909,9 +1410,11 @@ with tab_quality:
             st.plotly_chart(fig_pv, use_container_width=True)
 
 # ═══════════════════════════════════════════════════════════════
-# MODE TAB
+# MODE PAGE
 # ═══════════════════════════════════════════════════════════════
-with tab_mode:
+elif page.endswith("Mode"):
+    st.markdown('<div class="section-title">Mode Boundary Analysis</div>', unsafe_allow_html=True)
+
     if changes is None:
         st.info("changes_raw.csv not found.")
     else:
@@ -932,26 +1435,21 @@ with tab_mode:
         if "boundary_before" in mode_df.columns: mode_df["boundary_before"] = pd.to_numeric(mode_df["boundary_before"], errors="coerce")
         if "boundary_after"  in mode_df.columns: mode_df["boundary_after"]  = pd.to_numeric(mode_df["boundary_after"],  errors="coerce")
 
-        # ── Filters ─────────────────────────────────────────
-        mf1, mf2, mf3 = st.columns(3)
-        with mf1:
-            av = ["All"] + sorted(mode_df["variety"].dropna().astype(str).unique()) if "variety" in mode_df.columns else ["All"]
-            selected_mode_variety = st.selectbox("Variety", av, key="m_var")
+        # Apply filters from sidebar — filtered_mode = exact (variety+grower+version)
         filtered_mode = mode_df.copy()
-        if selected_mode_variety != "All" and "variety" in filtered_mode.columns:
+        if selected_mode_variety != "All varieties" and "variety" in filtered_mode.columns:
             filtered_mode = filtered_mode[filtered_mode["variety"].astype(str) == selected_mode_variety]
-
-        with mf2:
-            ag = ["All"] + sorted(filtered_mode["grower"].dropna().astype(str).unique()) if "grower" in filtered_mode.columns else ["All"]
-            selected_mode_grower = st.selectbox("Grower", ag, key="m_grower")
-        if selected_mode_grower != "All" and "grower" in filtered_mode.columns:
+        if selected_mode_grower != "All growers" and "grower" in filtered_mode.columns:
             filtered_mode = filtered_mode[filtered_mode["grower"].astype(str) == selected_mode_grower]
-
-        with mf3:
-            aver = ["All"] + sorted(filtered_mode["decfile_version"].dropna().astype(str).unique()) if "decfile_version" in filtered_mode.columns else ["All"]
-            selected_version = st.selectbox("Version", aver, key="m_ver")
-        if selected_version != "All" and "decfile_version" in filtered_mode.columns:
+        if selected_version != "All versions" and "decfile_version" in filtered_mode.columns:
             filtered_mode = filtered_mode[filtered_mode["decfile_version"].astype(str) == selected_version]
+
+        # variety_pool = same variety, ALL growers (for reference boundaries)
+        variety_pool = mode_df.copy()
+        if selected_mode_variety != "All varieties" and "variety" in variety_pool.columns:
+            variety_pool = variety_pool[variety_pool["variety"].astype(str) == selected_mode_variety]
+        if selected_version != "All versions" and "decfile_version" in variety_pool.columns:
+            variety_pool = variety_pool[variety_pool["decfile_version"].astype(str) == selected_version]
 
         # ── Overview KPIs ────────────────────────────────────
         total_changes = len(filtered_mode)
@@ -969,25 +1467,81 @@ with tab_mode:
 
         st.markdown("---")
 
-        # ── Top defects + boundary change viz ────────────────
-        top_left, top_right = st.columns([1, 1])
+        # ── Selection context (left) + Top Defects chart (right) ──────
+        ctx_left, ctx_right = st.columns([1, 1.4])
 
-        with top_left:
+        with ctx_left:
+            st.markdown('<div class="section-title">Current Selection</div>', unsafe_allow_html=True)
+
+            # build defect list for this variety+grower
+            current_defects = []
+            if batches is not None:
+                fbm = batches.copy()
+                for col in ["grower","variety","decfile_version","defect_1","defect_2","defect_3"]:
+                    if col in fbm.columns:
+                        fbm[col] = fbm[col].fillna("").astype(str).str.strip().replace("", pd.NA)
+                if selected_mode_variety != "All varieties" and "variety" in fbm.columns:
+                    fbm = fbm[fbm["variety"].astype(str) == selected_mode_variety]
+                if selected_mode_grower != "All growers" and "grower" in fbm.columns:
+                    fbm = fbm[fbm["grower"].astype(str) == selected_mode_grower]
+                dcols = [c for c in ["defect_1","defect_2","defect_3"] if c in fbm.columns]
+                if dcols:
+                    md_all = fbm[dcols].melt(value_name="d")["d"].dropna().astype(str).str.strip()
+                    md_all = md_all[md_all != ""]
+                    current_defects = md_all.value_counts().index.tolist()
+
+            # version display
+            ver_text = selected_version if selected_version != "All versions" else "—"
+            batch_count = len(batches[
+                (batches.get("variety", "").astype(str) == selected_mode_variety) &
+                (batches.get("grower", "").astype(str) == selected_mode_grower)
+            ]) if (batches is not None and selected_mode_variety != "All varieties" and selected_mode_grower != "All growers") else "—"
+
+            # KPI-style context cards
+            st.markdown(f"""
+              <div class="kpi-card">
+                <div class="kpi-label">Variety</div>
+                <div class="kpi-value" style="font-family:'Inter',sans-serif;text-transform:capitalize;">
+                  {selected_mode_variety.replace('_',' ') if selected_mode_variety != "All varieties" else "All varieties"}
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-label">Grower</div>
+                <div class="kpi-value" style="font-family:'Inter',sans-serif;text-transform:capitalize;">
+                  {selected_mode_grower.replace('_',' ') if selected_mode_grower != "All growers" else "All growers"}
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-label">Dec File Version &nbsp;·&nbsp; Batches</div>
+                <div class="kpi-value" style="font-family:'Inter',sans-serif;font-size:1.2rem;">
+                  {ver_text} &nbsp;·&nbsp; {batch_count if batch_count != "—" else "—"} batches
+                </div>
+              </div>
+            """, unsafe_allow_html=True)
+
+            # Defect chips inline, in descending order
+            if current_defects:
+                chips_html = "".join([f'<span class="insight-tag">{d}</span>' for d in current_defects[:12]])
+                st.markdown(f"""
+                  <div style="margin-top:8px;">
+                    <div class="kpi-label" style="margin-bottom:8px;">Recorded Defects (most → least)</div>
+                    {chips_html}
+                  </div>
+                """, unsafe_allow_html=True)
+
+        with ctx_right:
             st.markdown('<div class="section-title">Top Defects for Selection</div>', unsafe_allow_html=True)
-            batches_mode = None
+
+            top_defects_mode = pd.DataFrame(columns=["Defect","Count"])
             if batches is not None:
                 bm = batches.copy()
                 for col in ["grower","variety","decfile_version","defect_1","defect_2","defect_3"]:
                     if col in bm.columns:
                         bm[col] = bm[col].fillna("").astype(str).str.strip().replace("", pd.NA)
-                batches_mode = bm
-
-            top_defects_mode = pd.DataFrame(columns=["Defect","Count"])
-            if batches_mode is not None:
-                fbm = batches_mode.copy()
-                if selected_mode_variety != "All" and "variety" in fbm.columns:
+                fbm = bm.copy()
+                if selected_mode_variety != "All varieties" and "variety" in fbm.columns:
                     fbm = fbm[fbm["variety"].astype(str) == selected_mode_variety]
-                if selected_mode_grower != "All" and "grower" in fbm.columns:
+                if selected_mode_grower != "All growers" and "grower" in fbm.columns:
                     fbm = fbm[fbm["grower"].astype(str) == selected_mode_grower]
                 dcols = [c for c in ["defect_1","defect_2","defect_3"] if c in fbm.columns]
                 if dcols:
@@ -998,126 +1552,269 @@ with tab_mode:
                         top_defects_mode.columns = ["Defect","Count"]
 
             if not top_defects_mode.empty:
-                fig_tdm = px.bar(top_defects_mode.head(8), x="Count", y="Defect", orientation="h",
-                                 color_discrete_sequence=[ROSE])
-                apply_plot_theme(fig_tdm, height=280)
+                tdm_sorted = top_defects_mode.head(10).sort_values("Count", ascending=True)  # ascending for h-bar so largest is at top
+                fig_tdm = px.bar(
+                    tdm_sorted, x="Count", y="Defect", orientation="h",
+                    text="Count", color_discrete_sequence=[BLUE]
+                )
+                fig_tdm.update_traces(
+                    textposition="outside",
+                    textfont=dict(family="DM Mono, monospace", size=12, color="#0f1d35"),
+                    hovertemplate="%{y}<br>Count: %{x}<extra></extra>",
+                    cliponaxis=False,
+                    name=""  # remove "undefined" trace name
+                )
+                fig_tdm.update_layout(
+                    title=None,
+                    showlegend=False,
+                    xaxis_title=None, yaxis_title=None,
+                    yaxis=dict(tickfont=dict(size=12, color="#2d3f5e"))
+                )
+                apply_plot_theme(fig_tdm, height=max(320, 38 * len(tdm_sorted)))
+                # add headroom for outside text
+                fig_tdm.update_xaxes(range=[0, tdm_sorted["Count"].max() * 1.15])
                 st.plotly_chart(fig_tdm, use_container_width=True)
             else:
                 st.info("No defect data for current filters.")
 
-        with top_right:
-            st.markdown('<div class="section-title">Boundary Change Distribution</div>', unsafe_allow_html=True)
-            # NEW: show histogram of boundary changes (after - before)
-            if "boundary_before" in filtered_mode.columns and "boundary_after" in filtered_mode.columns:
-                filtered_mode["boundary_delta"] = filtered_mode["boundary_after"] - filtered_mode["boundary_before"]
-                deltas = filtered_mode["boundary_delta"].dropna()
-                if not deltas.empty:
-                    fig_delta = px.histogram(deltas, nbins=30,
-                                             color_discrete_sequence=[AMBER],
-                                             labels={"value":"Boundary Change", "count":"Count"})
-                    fig_delta.add_vline(x=0, line_dash="dot", line_color=ROSE)
-                    apply_plot_theme(fig_delta, height=280)
-                    fig_delta.update_layout(showlegend=False, xaxis_title="Boundary After − Before", yaxis_title="Count")
-                    st.plotly_chart(fig_delta, use_container_width=True)
-            else:
-                st.info("Boundary data not available.")
-
         st.markdown("---")
 
-        # ── Top adjusted modes table ──────────────────────────
+        # ── Top Adjusted Modes table — reordered columns ─────────────
         st.markdown('<div class="section-title">Top Adjusted Modes</div>', unsafe_allow_html=True)
+        st.caption("**Boundaries** = after-boundaries recorded for *this* grower + variety.  **Reference Boundaries** = after-boundaries seen for *the same variety across all growers* (broader reference pool).")
 
         adjusted_mode_table = pd.DataFrame()
         if "mode" in filtered_mode.columns and "action" in filtered_mode.columns:
             adjusted = filtered_mode[filtered_mode["action"].astype(str).str.lower().str.startswith("a")].copy()
+
+            # reference adjusted pool (same variety, all growers)
+            variety_adjusted = variety_pool.copy()
+            if "action" in variety_adjusted.columns:
+                variety_adjusted = variety_adjusted[
+                    variety_adjusted["action"].astype(str).str.lower().str.startswith("a")
+                ]
+
             if not adjusted.empty:
                 rows = []
                 gcols = ["mode"] + (["check_class"] if "check_class" in adjusted.columns else [])
                 for keys, grp in adjusted.groupby(gcols, dropna=False):
                     mode_name  = keys[0] if isinstance(keys, tuple) else keys
                     check_class = keys[1] if isinstance(keys, tuple) and len(keys) > 1 else ""
-                    _, allb = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
+
+                    # Boundaries — for this grower+variety
+                    _, own_b = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
+
+                    # Reference Boundaries — for same variety, all growers
+                    ref_grp = variety_adjusted
+                    if "mode" in ref_grp.columns:
+                        ref_grp = ref_grp[ref_grp["mode"].astype(str) == str(mode_name)]
+                    if "check_class" in ref_grp.columns and check_class:
+                        ref_grp = ref_grp[ref_grp["check_class"].astype(str) == str(check_class)]
+                    _, ref_b = summarize_boundaries(ref_grp["boundary_after"]) if "boundary_after" in ref_grp.columns else ("","")
+
                     sensitivity_text = ", ".join(sorted(set(grp["sensitivity"].dropna().astype(str)))) if "sensitivity" in grp.columns else ""
                     accuracy_text    = ", ".join(sorted(set(grp["accuracy"].dropna().astype(str)))) if "accuracy" in grp.columns else ""
-                    rows.append({"Check": False, "Mode": mode_name, "Check Class": check_class,
-                                 "Count": len(grp), "Reference Boundaries": allb,
-                                 "Sensitivity": sensitivity_text, "Accuracy": accuracy_text})
-                adjusted_mode_table = pd.DataFrame(rows).sort_values(["Count","Mode"], ascending=[False, True]).reset_index(drop=True)
+
+                    rows.append({
+                        "Check": False,
+                        "Mode": mode_name,
+                        "Check Class": check_class,
+                        "Boundaries": own_b,
+                        "Reference Boundaries": ref_b,
+                        "Count": len(grp),
+                        "Sensitivity": sensitivity_text,
+                        "Accuracy": accuracy_text,
+                    })
+                adjusted_mode_table = (
+                    pd.DataFrame(rows)
+                    .sort_values(["Count","Mode"], ascending=[False, True])
+                    .reset_index(drop=True)
+                )
 
         if not adjusted_mode_table.empty:
-            st.data_editor(adjusted_mode_table, use_container_width=True, height=300, hide_index=True,
-                column_config={"Check": st.column_config.CheckboxColumn("Check")},
-                disabled=["Mode","Check Class","Count","Reference Boundaries","Sensitivity","Accuracy"])
+            st.data_editor(
+                adjusted_mode_table,
+                use_container_width=True, height=320, hide_index=True,
+                column_config={
+                    "Check": st.column_config.CheckboxColumn("✓", width="small"),
+                    "Mode": st.column_config.TextColumn("Mode", width="medium"),
+                    "Check Class": st.column_config.TextColumn("Check Class", width="small"),
+                    "Boundaries": st.column_config.TextColumn("Boundaries", width="medium",
+                        help="After-boundaries recorded for this grower + variety"),
+                    "Reference Boundaries": st.column_config.TextColumn("Reference Boundaries", width="large",
+                        help="After-boundaries recorded for the same variety across all growers"),
+                    "Count": st.column_config.NumberColumn("Count", width="small"),
+                    "Sensitivity": st.column_config.TextColumn("Sensitivity", width="small"),
+                    "Accuracy": st.column_config.TextColumn("Accuracy", width="small"),
+                },
+                column_order=["Check", "Mode", "Check Class", "Boundaries",
+                              "Reference Boundaries", "Count", "Sensitivity", "Accuracy"],
+                disabled=["Mode","Check Class","Boundaries","Reference Boundaries","Count","Sensitivity","Accuracy"],
+                key="adj_mode_editor"
+            )
         else:
             st.info("No adjusted mode data.")
 
         st.markdown("---")
 
-        # ── Defect investigation ──────────────────────────────
+        # ── Defect Investigation Workflow — bidirectional ─────────
         st.markdown('<div class="section-title">Defect Investigation Workflow</div>', unsafe_allow_html=True)
 
-        step1, step2 = st.columns(2)
+        flow_dir = st.radio(
+            "Investigation direction",
+            ["🐛  Defect → ⚙️ Mode", "⚙️  Mode → 🐛 Defect"],
+            horizontal=True,
+            key="m_flow_dir"
+        )
+        is_defect_first = flow_dir.startswith("🐛")
 
-        with step1:
-            st.markdown("**Step 1 — Select defect to investigate**")
-            available_reason_items = []
-            if "reason" in filtered_mode.columns:
-                sr = filtered_mode["reason"].dropna().astype(str).str.split(",").explode().astype(str).str.strip()
-                available_reason_items = sorted(sr[sr != ""].unique().tolist())
+        # Build option lists
+        available_reason_items = []
+        if "reason" in filtered_mode.columns:
+            sr = filtered_mode["reason"].dropna().astype(str).str.split(",").explode().astype(str).str.strip()
+            available_reason_items = sorted(sr[sr != ""].unique().tolist())
 
-            selected_reason = st.selectbox("Defect / Reason", ["All"] + available_reason_items, key="m_reason")
+        available_mode_items = []
+        if "mode" in filtered_mode.columns:
+            available_mode_items = sorted(filtered_mode["mode"].dropna().astype(str).unique().tolist())
 
-            related_modes = pd.DataFrame()
-            if selected_reason != "All":
-                rdf = filtered_mode.copy()
-                rdf["reason_item"] = rdf["reason"].fillna("").astype(str).str.split(",")
-                rdf = rdf.explode("reason_item")
-                rdf["reason_item"] = rdf["reason_item"].astype(str).str.strip()
-                rdf = rdf[rdf["reason_item"] == selected_reason].copy()
+        st.markdown("")  # spacer
 
-                if not rdf.empty:
-                    rows = []
-                    for keys, grp in rdf.groupby(["mode","check_class"], dropna=False):
-                        _, allb = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
-                        rows.append({"Mode": keys[0], "Check Class": keys[1], "Count": len(grp),
-                                     "Reference Boundaries": allb})
-                    related_modes = pd.DataFrame(rows).sort_values("Count", ascending=False)
+        step_l, step_r = st.columns(2)
 
-            if not related_modes.empty:
-                st.dataframe(related_modes, use_container_width=True, height=240)
-            elif selected_reason != "All":
-                st.info("No related modes found.")
+        if is_defect_first:
+            # ───── Defect → Mode flow ─────
+            with step_l:
+                st.markdown("**Step 1 — Choose a defect / reason**")
+                selected_reason = st.selectbox(
+                    "🐛  Defect / Reason",
+                    ["Select a defect…"] + available_reason_items,
+                    key="m_reason_df",
+                )
 
-        with step2:
-            st.markdown("**Step 2 — What else can this mode detect?**")
-            mode_options = related_modes["Mode"].dropna().astype(str).unique().tolist() if not related_modes.empty else []
-            selected_related_mode = st.selectbox("Select mode", ["All"] + sorted(mode_options), key="m_rel_mode")
+                related_modes = pd.DataFrame()
+                if selected_reason != "Select a defect…":
+                    rdf = filtered_mode.copy()
+                    rdf["reason_item"] = rdf["reason"].fillna("").astype(str).str.split(",")
+                    rdf = rdf.explode("reason_item")
+                    rdf["reason_item"] = rdf["reason_item"].astype(str).str.strip()
+                    rdf = rdf[rdf["reason_item"] == selected_reason].copy()
 
-            if selected_related_mode != "All":
-                sel_mode_rows = filtered_mode[filtered_mode["mode"].astype(str) == selected_related_mode].copy()
-                if "reason" in sel_mode_rows.columns:
-                    other_reasons = (sel_mode_rows["reason"].dropna().astype(str).str.split(",")
-                                     .explode().astype(str).str.strip())
-                    other_reasons = other_reasons[other_reasons != ""]
-                    if not other_reasons.empty:
-                        orc = other_reasons.value_counts().reset_index()
-                        orc.columns = ["Recorded Reason","Count"]
-                        st.dataframe(orc, use_container_width=True, height=240)
+                    if not rdf.empty:
+                        rows = []
+                        for keys, grp in rdf.groupby(["mode","check_class"], dropna=False):
+                            _, allb = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
+                            rows.append({
+                                "Mode": keys[0],
+                                "Check Class": keys[1],
+                                "Boundaries": allb,
+                                "Count": len(grp),
+                            })
+                        related_modes = pd.DataFrame(rows).sort_values("Count", ascending=False)
+
+                if not related_modes.empty:
+                    st.dataframe(related_modes, use_container_width=True, height=260, hide_index=True)
+                elif selected_reason != "Select a defect…":
+                    st.info("No related modes found.")
+                else:
+                    st.info("Pick a defect to see which modes detect it.")
+
+            with step_r:
+                st.markdown("**Step 2 — Pick a mode → see what else it detects**")
+                mode_options = related_modes["Mode"].dropna().astype(str).unique().tolist() if not related_modes.empty else []
+                selected_related_mode = st.selectbox(
+                    "⚙️  Mode",
+                    ["Select a mode…"] + sorted(mode_options),
+                    key="m_rel_mode_df"
+                )
+
+                if selected_related_mode != "Select a mode…":
+                    sel_mode_rows = filtered_mode[filtered_mode["mode"].astype(str) == selected_related_mode].copy()
+                    if "reason" in sel_mode_rows.columns:
+                        other_reasons = (sel_mode_rows["reason"].dropna().astype(str).str.split(",")
+                                         .explode().astype(str).str.strip())
+                        other_reasons = other_reasons[other_reasons != ""]
+                        if not other_reasons.empty:
+                            orc = other_reasons.value_counts().reset_index()
+                            orc.columns = ["Recorded Reason","Count"]
+                            st.dataframe(orc, use_container_width=True, height=260, hide_index=True)
+                        else:
+                            st.info("No other recorded reasons.")
+                else:
+                    st.info("Select a mode from Step 1 to inspect.")
+
+        else:
+            # ───── Mode → Defect flow ─────
+            with step_l:
+                st.markdown("**Step 1 — Choose a mode**")
+                selected_mode_first = st.selectbox(
+                    "⚙️  Mode",
+                    ["Select a mode…"] + available_mode_items,
+                    key="m_mode_md",
+                )
+
+                related_defects = pd.DataFrame()
+                if selected_mode_first != "Select a mode…":
+                    sel_rows = filtered_mode[filtered_mode["mode"].astype(str) == selected_mode_first].copy()
+                    if "reason" in sel_rows.columns:
+                        rd = (sel_rows["reason"].dropna().astype(str).str.split(",")
+                              .explode().astype(str).str.strip())
+                        rd = rd[rd != ""]
+                        if not rd.empty:
+                            related_defects = rd.value_counts().reset_index()
+                            related_defects.columns = ["Defect / Reason","Count"]
+
+                if not related_defects.empty:
+                    st.dataframe(related_defects, use_container_width=True, height=260, hide_index=True)
+                elif selected_mode_first != "Select a mode…":
+                    st.info("No defects logged against this mode for the current selection.")
+                else:
+                    st.info("Pick a mode to see which defects it captures.")
+
+            with step_r:
+                st.markdown("**Step 2 — Pick a defect → see all modes that detect it**")
+                defect_options = related_defects["Defect / Reason"].astype(str).tolist() if not related_defects.empty else []
+                selected_defect_md = st.selectbox(
+                    "🐛  Defect / Reason",
+                    ["Select a defect…"] + defect_options,
+                    key="m_defect_md"
+                )
+
+                if selected_defect_md != "Select a defect…":
+                    rdf = filtered_mode.copy()
+                    rdf["reason_item"] = rdf["reason"].fillna("").astype(str).str.split(",")
+                    rdf = rdf.explode("reason_item")
+                    rdf["reason_item"] = rdf["reason_item"].astype(str).str.strip()
+                    rdf = rdf[rdf["reason_item"] == selected_defect_md].copy()
+
+                    if not rdf.empty:
+                        rows = []
+                        for keys, grp in rdf.groupby(["mode","check_class"], dropna=False):
+                            _, allb = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
+                            rows.append({
+                                "Mode": keys[0],
+                                "Check Class": keys[1],
+                                "Boundaries": allb,
+                                "Count": len(grp),
+                            })
+                        out_df = pd.DataFrame(rows).sort_values("Count", ascending=False)
+                        st.dataframe(out_df, use_container_width=True, height=260, hide_index=True)
                     else:
-                        st.info("No other recorded reasons.")
-            else:
-                st.info("Select a mode above.")
+                        st.info("No modes found for this defect.")
+                else:
+                    st.info("Select a defect from Step 1 to inspect.")
 
-        # Step 3 — unchecked modes
+        # ── Unchecked modes (separate section at bottom) ─────────
         st.markdown("---")
-        st.markdown("**Step 3 — Unchecked modes for this grower / variety**")
+        st.markdown('<div class="section-title">Unchecked Modes for This Grower / Variety</div>', unsafe_allow_html=True)
+        st.caption("Modes seen for this **variety** across other growers, but not yet checked or adjusted for the **current grower**.")
 
         next_modes_table = pd.DataFrame()
-        if selected_mode_variety != "All" and selected_mode_grower != "All":
+        if selected_mode_variety != "All varieties" and selected_mode_grower != "All growers":
             variety_mode_db = mode_df.copy()
             if "variety" in variety_mode_db.columns:
                 variety_mode_db = variety_mode_db[variety_mode_db["variety"].astype(str) == selected_mode_variety]
-            if selected_version != "All" and "decfile_version" in variety_mode_db.columns:
+            if selected_version != "All versions" and "decfile_version" in variety_mode_db.columns:
                 variety_mode_db = variety_mode_db[variety_mode_db["decfile_version"].astype(str) == selected_version]
 
             grower_mode_db = variety_mode_db.copy()
@@ -1134,24 +1831,35 @@ with tab_mode:
                 mn = str(keys[0]); cc = str(keys[1])
                 if (mn, cc) in checked_pairs: continue
                 _, allb = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
-                rows.append({"Check": False, "Mode": mn, "Check Class": cc, "Count": len(grp), "Reference Boundaries": allb})
+                rows.append({"Check": False, "Mode": mn, "Check Class": cc,
+                             "Reference Boundaries": allb, "Count": len(grp)})
 
             if rows:
                 next_modes_table = pd.DataFrame(rows).sort_values("Count", ascending=False).reset_index(drop=True)
 
-        if selected_mode_variety == "All" or selected_mode_grower == "All":
-            st.info("Select a specific variety and grower to see unchecked modes.")
+        if selected_mode_variety == "All varieties" or selected_mode_grower == "All growers":
+            st.info("Select a specific variety **and** grower in the sidebar to see unchecked modes.")
         elif not next_modes_table.empty:
-            st.data_editor(next_modes_table, use_container_width=True, height=280, hide_index=True,
-                column_config={"Check": st.column_config.CheckboxColumn("Check")},
-                disabled=["Mode","Check Class","Count","Reference Boundaries"])
+            st.data_editor(
+                next_modes_table, use_container_width=True, height=300, hide_index=True,
+                column_config={
+                    "Check": st.column_config.CheckboxColumn("✓", width="small"),
+                    "Mode": st.column_config.TextColumn("Mode", width="medium"),
+                    "Check Class": st.column_config.TextColumn("Check Class", width="small"),
+                    "Reference Boundaries": st.column_config.TextColumn("Reference Boundaries", width="large"),
+                    "Count": st.column_config.NumberColumn("Count", width="small"),
+                },
+                column_order=["Check","Mode","Check Class","Reference Boundaries","Count"],
+                disabled=["Mode","Check Class","Reference Boundaries","Count"],
+                key="unchecked_mode_editor"
+            )
         else:
-            st.info("No additional unchecked modes for this grower.")
+            st.info("No additional unchecked modes for this grower under the selected variety.")
 
 # ═══════════════════════════════════════════════════════════════
-# OPERATORS TAB  ← NEW
+# OPERATORS PAGE
 # ═══════════════════════════════════════════════════════════════
-with tab_operators:
+elif page.endswith("Operators"):
     st.markdown('<div class="section-title">Operator & Machine Performance</div>', unsafe_allow_html=True)
 
     ops_df = runs.copy()
@@ -1162,18 +1870,10 @@ with tab_operators:
     if not has_machine and not has_quality:
         st.info("No operator columns found in runs_raw.csv.")
     else:
-        # Filter
-        op_f1, op_f2 = st.columns(2)
-        with op_f1:
-            month_opts = sorted(ops_df["run_date"].dt.to_period("M").astype(str).unique(), reverse=True)
-            sel_op_month = st.selectbox("Month", ["All"] + month_opts, key="op_month")
-        with op_f2:
-            variety_opts = sorted(ops_df["variety"].dropna().astype(str).unique()) if "variety" in ops_df.columns else []
-            sel_op_var = st.selectbox("Variety", ["All"] + variety_opts, key="op_var")
-
+        # Filters come from sidebar
         ops_df["month_label"] = ops_df["run_date"].dt.to_period("M").astype(str)
-        if sel_op_month != "All": ops_df = ops_df[ops_df["month_label"] == sel_op_month]
-        if sel_op_var != "All" and "variety" in ops_df.columns: ops_df = ops_df[ops_df["variety"].astype(str) == sel_op_var]
+        if sel_op_month != "All months": ops_df = ops_df[ops_df["month_label"] == sel_op_month]
+        if sel_op_var != "All varieties" and "variety" in ops_df.columns: ops_df = ops_df[ops_df["variety"].astype(str) == sel_op_var]
 
         ops_cols = st.columns(2)
 
