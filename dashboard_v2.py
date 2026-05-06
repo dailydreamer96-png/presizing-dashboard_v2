@@ -606,14 +606,70 @@ def summarize_boundaries(series):
 # ─────────────────────────────────────────────────────────────
 # LOAD DATA
 # ─────────────────────────────────────────────────────────────
-runs    = load_csv("runs_raw.csv")
-batches = load_csv("batches_raw.csv")
-changes = load_csv("changes_raw.csv")
+runs     = load_csv("runs_raw.csv")
+batches  = load_csv("batches_raw.csv")
+changes  = load_csv("changes_raw.csv")
 downtime = load_csv("downtime_raw.csv")
+dec_file = load_csv("dec_file_raw.csv")
 
 if runs is None:
     st.error("runs_raw.csv not found.")
     st.stop()
+
+# ─────────────────────────────────────────────────────────────
+# CLEAN DEC_FILE — training records
+# ─────────────────────────────────────────────────────────────
+def _parse_mixed_date(s):
+    """Handle 2024-03-06 / 26/01/2024 / 27.02.2024 etc."""
+    if pd.isna(s):
+        return pd.NaT
+    s = str(s).strip().replace(".", "/")
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return pd.to_datetime(s, format=fmt)
+        except (ValueError, TypeError):
+            continue
+    return pd.to_datetime(s, errors="coerce", dayfirst=True)
+
+if dec_file is not None:
+    for col in ("date_submit", "date_complete"):
+        if col in dec_file.columns:
+            dec_file[col] = dec_file[col].apply(_parse_mixed_date)
+
+    if "variety" in dec_file.columns:
+        dec_file["variety"] = dec_file["variety"].fillna("").astype(str).str.strip().replace("", pd.NA)
+    if "decfile_ver" in dec_file.columns:
+        dec_file["decfile_ver"] = dec_file["decfile_ver"].fillna("").astype(str).str.strip().replace("", pd.NA)
+    if "decfile_type" in dec_file.columns:
+        dec_file["decfile_type"] = dec_file["decfile_type"].fillna("").astype(str).str.strip().replace("", pd.NA)
+
+    # Build a long-format defect list per training row
+    defect_cols = [c for c in dec_file.columns if c.startswith("defects")]
+    if defect_cols:
+        def _row_defects(row):
+            items = []
+            for c in defect_cols:
+                v = row.get(c)
+                if pd.isna(v): continue
+                v = str(v).strip()
+                if v in ("", "-", "—"): continue
+                # split on ; or , to handle "san_jose; (C6)scab"
+                for piece in v.replace(";", ",").split(","):
+                    piece = piece.strip()
+                    if piece and piece not in ("-",):
+                        items.append(piece)
+            return items
+        dec_file["defects_list"] = dec_file.apply(_row_defects, axis=1)
+        dec_file["defect_count"] = dec_file["defects_list"].apply(len)
+
+    # Turnaround: positive only; negative values indicate data-entry mistake (complete < submit)
+    if "date_submit" in dec_file.columns and "date_complete" in dec_file.columns:
+        dec_file["turnaround_days"] = (dec_file["date_complete"] - dec_file["date_submit"]).dt.days
+        dec_file.loc[dec_file["turnaround_days"] < 0, "turnaround_days"] = pd.NA
+
+    dec_file["status"] = dec_file["date_complete"].apply(
+        lambda d: "Completed" if pd.notna(d) else "Pending"
+    )
 
 # ─────────────────────────────────────────────────────────────
 # CLEAN RUNS
@@ -728,7 +784,7 @@ nav_col1, nav_col2 = st.columns([5, 1])
 with nav_col1:
     page = st.radio(
         "Page",
-        ["📊  Summary", "🍏  Quality", "⚙️  Mode", "👷  Operators"],
+        ["📊  Summary", "🎯  IQS", "🍏  Quality", "👷  Operators", "🧠  Training"],
         label_visibility="collapsed",
         horizontal=True,
         key="nav_page",
@@ -775,7 +831,8 @@ if st.session_state.show_filters:
             with f2:
                 selected_year = st.selectbox("📅  Year", available_years, key="s_year_m")
             year_df = summary_df[summary_df["year"] == selected_year].copy()
-            available_months = year_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
+            # Descending: most-recent month at top
+            available_months = year_df["month_label"].dropna().drop_duplicates().sort_values(ascending=False).tolist()
             with f3:
                 sel_month_raw = st.selectbox("📅  Month", ["All months"] + available_months, key="s_month")
             selected_month = None if sel_month_raw == "All months" else sel_month_raw
@@ -784,12 +841,18 @@ if st.session_state.show_filters:
             summary_df["month_label"] = summary_df["run_date"].dt.to_period("M").astype(str)
             summary_df["week_start"] = summary_df["run_date"] - pd.to_timedelta(summary_df["run_date"].dt.weekday, unit="D")
             summary_df["week_label"] = "W/C " + summary_df["week_start"].dt.strftime("%Y-%m-%d")
-            available_months = summary_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
+            # Descending months
+            available_months = summary_df["month_label"].dropna().drop_duplicates().sort_values(ascending=False).tolist()
             with f2:
                 sel_month_raw = st.selectbox("📅  Month", ["All months"] + available_months, key="s_month_w")
             selected_month = None if sel_month_raw == "All months" else sel_month_raw
             month_df = summary_df.copy() if selected_month is None else summary_df[summary_df["month_label"] == selected_month].copy()
-            available_weeks = month_df[["week_label","week_start"]].drop_duplicates().sort_values("week_start")["week_label"].tolist()
+            # Descending weeks (most recent first)
+            available_weeks = (
+                month_df[["week_label","week_start"]]
+                .drop_duplicates()
+                .sort_values("week_start", ascending=False)["week_label"].tolist()
+            )
             with f3:
                 sel_week_raw = st.selectbox("📅  Week", ["All weeks"] + available_weeks, key="s_week")
             selected_week = None if sel_week_raw == "All weeks" else sel_week_raw
@@ -817,7 +880,7 @@ if st.session_state.show_filters:
                 key="q_month",
             )
 
-    elif page.endswith("Mode"):
+    elif page.endswith("IQS"):
         if changes is not None:
             mode_df_pre = changes.copy()
             if "run_id" in mode_df_pre.columns and "run_id" in runs.columns:
@@ -866,6 +929,24 @@ if st.session_state.show_filters:
             variety_opts = sorted(ops_pre["variety"].dropna().astype(str).unique()) if "variety" in ops_pre.columns else []
             sel_op_var = st.selectbox("🍎  Variety", ["All varieties"] + variety_opts, key="op_var")
 
+    elif page.endswith("Training"):
+        if dec_file is None or dec_file.empty:
+            st.info("dec_file_raw.csv not found — Training filters unavailable.")
+            sel_tr_year = "All years"; sel_tr_variety = "All varieties"; sel_tr_status = "All"
+        else:
+            f1, f2, f3 = st.columns(3)
+            year_opts = sorted(
+                dec_file["date_submit"].dropna().dt.year.astype(int).unique().tolist(),
+                reverse=True
+            )
+            with f1:
+                sel_tr_year = st.selectbox("📅  Year submitted", ["All years"] + [str(y) for y in year_opts], key="tr_year")
+            with f2:
+                tr_var_opts = sorted(dec_file["variety"].dropna().astype(str).unique().tolist())
+                sel_tr_variety = st.selectbox("🍎  Variety", ["All varieties"] + tr_var_opts, key="tr_variety")
+            with f3:
+                sel_tr_status = st.selectbox("📋  Status", ["All", "Completed", "Pending"], key="tr_status")
+
     st.markdown('</div>', unsafe_allow_html=True)
 else:
     # Filters hidden — still need to compute the values from session state defaults
@@ -883,18 +964,22 @@ else:
             available_years = sorted(summary_df["year"].dropna().unique(), reverse=True)
             selected_year = st.session_state.get("s_year_m", available_years[0] if available_years else None)
             year_df = summary_df[summary_df["year"] == selected_year].copy()
-            available_months = year_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
+            available_months = year_df["month_label"].dropna().drop_duplicates().sort_values(ascending=False).tolist()
             sel_month_raw = st.session_state.get("s_month", "All months")
             selected_month = None if sel_month_raw == "All months" else sel_month_raw
         else:
             summary_df["month_label"] = summary_df["run_date"].dt.to_period("M").astype(str)
             summary_df["week_start"] = summary_df["run_date"] - pd.to_timedelta(summary_df["run_date"].dt.weekday, unit="D")
             summary_df["week_label"] = "W/C " + summary_df["week_start"].dt.strftime("%Y-%m-%d")
-            available_months = summary_df["month_label"].dropna().drop_duplicates().sort_values().tolist()
+            available_months = summary_df["month_label"].dropna().drop_duplicates().sort_values(ascending=False).tolist()
             sel_month_raw = st.session_state.get("s_month_w", "All months")
             selected_month = None if sel_month_raw == "All months" else sel_month_raw
             month_df = summary_df.copy() if selected_month is None else summary_df[summary_df["month_label"] == selected_month].copy()
-            available_weeks = month_df[["week_label","week_start"]].drop_duplicates().sort_values("week_start")["week_label"].tolist()
+            available_weeks = (
+                month_df[["week_label","week_start"]]
+                .drop_duplicates()
+                .sort_values("week_start", ascending=False)["week_label"].tolist()
+            )
             sel_week_raw = st.session_state.get("s_week", "All weeks")
             selected_week = None if sel_week_raw == "All weeks" else sel_week_raw
     elif page.endswith("Quality"):
@@ -903,13 +988,17 @@ else:
         selected_variety = st.session_state.get("q_var", "All varieties")
         selected_grower = st.session_state.get("q_grower", "All growers")
         selected_quality_month = st.session_state.get("q_month", "All months")
-    elif page.endswith("Mode"):
+    elif page.endswith("IQS"):
         selected_mode_variety = st.session_state.get("m_var", "All varieties")
         selected_mode_grower = st.session_state.get("m_grower", "All growers")
         selected_version = st.session_state.get("m_ver", "All versions")
     elif page.endswith("Operators"):
         sel_op_month = st.session_state.get("op_month", "All months")
         sel_op_var = st.session_state.get("op_var", "All varieties")
+    elif page.endswith("Training"):
+        sel_tr_year = st.session_state.get("tr_year", "All years")
+        sel_tr_variety = st.session_state.get("tr_variety", "All varieties")
+        sel_tr_status = st.session_state.get("tr_status", "All")
 
 # ═══════════════════════════════════════════════════════════════
 # SUMMARY PAGE
@@ -1416,10 +1505,10 @@ elif page.endswith("Quality"):
             st.plotly_chart(fig_pv, use_container_width=True)
 
 # ═══════════════════════════════════════════════════════════════
-# MODE PAGE
+# IQS PAGE  (Image Quality System — was "Mode")
 # ═══════════════════════════════════════════════════════════════
-elif page.endswith("Mode"):
-    st.markdown('<div class="section-title">Mode Boundary Analysis</div>', unsafe_allow_html=True)
+elif page.endswith("IQS"):
+    st.markdown('<div class="section-title">IQS Boundary Analysis</div>', unsafe_allow_html=True)
 
     if changes is None:
         st.info("changes_raw.csv not found.")
@@ -1866,76 +1955,105 @@ elif page.endswith("Mode"):
 # OPERATORS PAGE
 # ═══════════════════════════════════════════════════════════════
 elif page.endswith("Operators"):
-    st.markdown('<div class="section-title">Operator & Machine Performance</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Shift Performance & Operating Rhythm</div>', unsafe_allow_html=True)
+    st.caption("Insights about how shifts run — throughput consistency, lane balance, downtime impact, and daily rhythm. Operator names are shown alongside, but the focus is on the shift, not blame.")
 
     ops_df = runs.copy()
     has_machine  = "operator_machine"  in ops_df.columns
     has_quality  = "operator_quality"  in ops_df.columns
-    has_bph      = "bins_per_hour_row" in ops_df.columns
 
-    if not has_machine and not has_quality:
-        st.info("No operator columns found in runs_raw.csv.")
+    # Filters
+    ops_df["month_label"] = ops_df["run_date"].dt.to_period("M").astype(str)
+    if sel_op_month != "All months":
+        ops_df = ops_df[ops_df["month_label"] == sel_op_month]
+    if sel_op_var != "All varieties" and "variety" in ops_df.columns:
+        ops_df = ops_df[ops_df["variety"].astype(str) == sel_op_var]
+
+    if ops_df.empty:
+        st.info("No runs in the selected period.")
     else:
-        # Filters come from sidebar
-        ops_df["month_label"] = ops_df["run_date"].dt.to_period("M").astype(str)
-        if sel_op_month != "All months": ops_df = ops_df[ops_df["month_label"] == sel_op_month]
-        if sel_op_var != "All varieties" and "variety" in ops_df.columns: ops_df = ops_df[ops_df["variety"].astype(str) == sel_op_var]
+        # ── KPI strip ─────────────────────────────────────────
+        n_runs     = len(ops_df)
+        n_days     = ops_df["run_date"].dt.normalize().nunique()
+        runs_per_day = n_runs / n_days if n_days else 0
+        avg_run_hr = ops_df["run_hours"].mean() if "run_hours" in ops_df.columns else None
+        med_run_hr = ops_df["run_hours"].median() if "run_hours" in ops_df.columns else None
+        avg_bph    = (ops_df["total_bins_with_retip"].sum() / ops_df["run_hours"].sum()) \
+                     if ("run_hours" in ops_df.columns and ops_df["run_hours"].sum() > 0) else None
 
-        ops_cols = st.columns(2)
+        ko1, ko2, ko3, ko4 = st.columns(4)
+        ko1.markdown(kpi_html("Total Runs", f"{n_runs:,}"), unsafe_allow_html=True)
+        ko2.markdown(kpi_html("Active Days", f"{n_days:,}", f"{runs_per_day:.1f} runs/day"), unsafe_allow_html=True)
+        ko3.markdown(kpi_html("Avg Run Length", f"{avg_run_hr:.1f} hr" if avg_run_hr else "N/A",
+                              f"median {med_run_hr:.1f}" if med_run_hr else ""), unsafe_allow_html=True)
+        ko4.markdown(kpi_html("Avg Bins / Hour", f"{avg_bph:.1f}" if avg_bph else "N/A"), unsafe_allow_html=True)
 
-        if has_machine:
-            with ops_cols[0]:
-                st.markdown('<div class="section-title">Machine Operator — Throughput</div>', unsafe_allow_html=True)
-                mach_grp = ops_df.groupby("operator_machine", as_index=False).apply(
-                    lambda g: pd.Series({
-                        "bins_run": g["bins_run"].sum(),
-                        "bins_per_hour": (g["total_bins_with_retip"].sum() / g["run_hours"].sum()
-                                          if "run_hours" in g.columns and g["run_hours"].sum() > 0 else None),
-                        "runs": len(g)
-                    })
-                ).dropna(subset=["operator_machine"])
-                mach_grp = mach_grp[mach_grp["operator_machine"].astype(str).str.strip() != ""]
+        st.markdown("---")
 
-                if not mach_grp.empty:
-                    fig_mop = px.bar(mach_grp.sort_values("bins_run", ascending=True),
-                                     x="bins_run", y="operator_machine", orientation="h",
-                                     color="bins_per_hour", color_continuous_scale=["#1e2435", AMBER],
-                                     labels={"bins_run":"Total Bins","operator_machine":"Operator","bins_per_hour":"Bins/hr"},
-                                     hover_data={"bins_per_hour":":.1f", "runs":True})
-                    fig_mop.update_coloraxes(showscale=False)
-                    apply_plot_theme(fig_mop, height=max(280, len(mach_grp)*38))
-                    st.plotly_chart(fig_mop, use_container_width=True)
-                else:
-                    st.info("No machine operator data.")
+        # ── Daily throughput rhythm ───────────────────────────
+        st.markdown('<div class="section-title">Daily Throughput Rhythm</div>', unsafe_allow_html=True)
+        st.caption("How consistent is daily output? Spikes and dips reveal good days, breakdown days, or staffing changes.")
+        daily = (ops_df.groupby(ops_df["run_date"].dt.normalize())
+                       .agg(bins_run=("bins_run","sum"),
+                            runs=("run_id","count") if "run_id" in ops_df.columns else ("bins_run","count"),
+                            hours=("run_hours","sum"))
+                       .reset_index().rename(columns={"run_date":"day"}))
+        if not daily.empty:
+            avg_bins_day = daily["bins_run"].mean()
+            fig_daily = px.bar(daily, x="day", y="bins_run",
+                               color_discrete_sequence=[BLUE],
+                               labels={"day":"Date","bins_run":"Bins"})
+            fig_daily.add_hline(y=avg_bins_day, line_dash="dot", line_color=ROSE,
+                                annotation_text=f"Avg {avg_bins_day:.0f} bins/day",
+                                annotation_font_color=ROSE, annotation_position="top right")
+            fig_daily.update_traces(hovertemplate="%{x|%a %d %b}<br>%{y:,.0f} bins<extra></extra>", name="")
+            apply_plot_theme(fig_daily, height=320)
+            fig_daily.update_layout(showlegend=False, xaxis_title=None)
+            st.plotly_chart(fig_daily, use_container_width=True)
 
-        if has_quality:
-            with ops_cols[1 if has_machine else 0]:
-                st.markdown('<div class="section-title">Quality Operator — Average Premium Rate</div>', unsafe_allow_html=True)
-                qual_grp = ops_df.groupby("operator_quality", as_index=False).apply(
-                    lambda g: pd.Series({
-                        "avg_premium": g["premium_rate"].mean() if "premium_rate" in g.columns else None,
-                        "avg_juice": g["juice_rate"].mean() if "juice_rate" in g.columns else None,
-                        "runs": len(g)
-                    })
-                ).dropna(subset=["operator_quality"])
-                qual_grp = qual_grp[qual_grp["operator_quality"].astype(str).str.strip() != ""]
+        st.markdown("---")
 
-                if not qual_grp.empty and "avg_premium" in qual_grp.columns:
-                    fig_qop = px.bar(qual_grp.dropna(subset=["avg_premium"]).sort_values("avg_premium", ascending=True),
-                                     x="avg_premium", y="operator_quality", orientation="h",
-                                     color="avg_premium", color_continuous_scale=["#1e2435", EMERALD],
-                                     labels={"avg_premium":"Avg Premium %","operator_quality":"Operator"},
-                                     hover_data={"avg_juice":":.1f","runs":True})
-                    fig_qop.update_coloraxes(showscale=False)
-                    apply_plot_theme(fig_qop, height=max(280, len(qual_grp)*38))
-                    st.plotly_chart(fig_qop, use_container_width=True)
-                else:
-                    st.info("No quality operator data or premium rate not recorded.")
+        # ── Run-length distribution + start-time pattern ───────
+        rl_left, rl_right = st.columns(2)
 
-        # Speed lanes
-        if speed_cols:
-            st.markdown("---")
-            st.markdown('<div class="section-title">Lane Speed Distribution</div>', unsafe_allow_html=True)
+        with rl_left:
+            st.markdown('<div class="section-title">Run Length Distribution</div>', unsafe_allow_html=True)
+            st.caption("Are runs typically short or long? Wide spread = inconsistent shift planning.")
+            if "run_hours" in ops_df.columns and ops_df["run_hours"].notna().any():
+                fig_rl = px.histogram(ops_df.dropna(subset=["run_hours"]),
+                                      x="run_hours", nbins=24,
+                                      color_discrete_sequence=[BLUE],
+                                      labels={"run_hours":"Run length (hours)"})
+                fig_rl.update_traces(hovertemplate="%{x:.1f}h: %{y} runs<extra></extra>", name="")
+                apply_plot_theme(fig_rl, height=300)
+                fig_rl.update_layout(showlegend=False, yaxis_title="Runs")
+                st.plotly_chart(fig_rl, use_container_width=True)
+            else:
+                st.info("Run length not available.")
+
+        with rl_right:
+            st.markdown('<div class="section-title">Start-Time Pattern</div>', unsafe_allow_html=True)
+            st.caption("When do shifts typically begin? Reveals early/late starts and shift changeovers.")
+            if "start_dt" in ops_df.columns and ops_df["start_dt"].notna().any():
+                start_hours = ops_df["start_dt"].dt.hour.dropna()
+                hourly = start_hours.value_counts().reindex(range(24), fill_value=0).reset_index()
+                hourly.columns = ["hour","starts"]
+                fig_st = px.bar(hourly, x="hour", y="starts",
+                                color_discrete_sequence=[NAVY],
+                                labels={"hour":"Hour of day","starts":"Run starts"})
+                fig_st.update_traces(hovertemplate="%{x:02d}:00 — %{y} runs<extra></extra>", name="")
+                apply_plot_theme(fig_st, height=300)
+                fig_st.update_layout(showlegend=False, xaxis=dict(tickmode='linear', dtick=2))
+                st.plotly_chart(fig_st, use_container_width=True)
+            else:
+                st.info("Start time not available.")
+
+        st.markdown("---")
+
+        # ── Lane Speed Balance ────────────────────────────────
+        if speed_cols and any(c in ops_df.columns for c in speed_cols):
+            st.markdown('<div class="section-title">Lane Speed Balance</div>', unsafe_allow_html=True)
+            st.caption("Box plots of programmed speeds per lane group. A wide box = inconsistent setup; outliers = unusual runs to investigate.")
             speed_df = ops_df[speed_cols].melt(var_name="Lane", value_name="Speed").dropna()
             speed_df["Lane"] = speed_df["Lane"].map({
                 "Speed_12":"Lanes 1-2","Speed_34":"Lanes 3-4","Speed_56":"Lanes 5-6","full_speed":"Full Speed"
@@ -1944,19 +2062,327 @@ elif page.endswith("Operators"):
                 fig_spd = px.box(speed_df, x="Lane", y="Speed", color="Lane",
                                  color_discrete_sequence=COLOR_SEQ,
                                  labels={"Speed":"Speed","Lane":"Lane Group"})
-                apply_plot_theme(fig_spd, height=300)
+                fig_spd.update_traces(hovertemplate="%{y}<extra>%{x}</extra>")
+                apply_plot_theme(fig_spd, height=320)
                 fig_spd.update_layout(showlegend=False)
                 st.plotly_chart(fig_spd, use_container_width=True)
+            else:
+                st.info("No lane speed values recorded for this period.")
 
-        # Retip per operator (machine)
-        if has_machine and "retip" in ops_df.columns:
+        st.markdown("---")
+
+        # ── Downtime impact on shift ──────────────────────────
+        st.markdown('<div class="section-title">Downtime Impact on Shifts</div>', unsafe_allow_html=True)
+        st.caption("Total downtime hours per day for the selected period — reveals which days lost the most production.")
+        if downtime is not None and "run_date" in downtime.columns:
+            dt_in = downtime.dropna(subset=["run_date"]).copy()
+            dt_in["month_label"] = dt_in["run_date"].dt.to_period("M").astype(str)
+            if sel_op_month != "All months":
+                dt_in = dt_in[dt_in["month_label"] == sel_op_month]
+            if not dt_in.empty:
+                dt_daily = (dt_in.groupby(dt_in["run_date"].dt.normalize())["duration_hours"]
+                                .sum().reset_index().rename(columns={"run_date":"day"}))
+                fig_dt = px.bar(dt_daily, x="day", y="duration_hours",
+                                color_discrete_sequence=[ROSE],
+                                labels={"day":"Date","duration_hours":"Downtime (hr)"})
+                fig_dt.update_traces(hovertemplate="%{x|%a %d %b}<br>%{y:.2f} hr<extra></extra>", name="")
+                apply_plot_theme(fig_dt, height=280)
+                fig_dt.update_layout(showlegend=False, xaxis_title=None)
+                st.plotly_chart(fig_dt, use_container_width=True)
+            else:
+                st.info("No downtime recorded for this period.")
+        else:
+            st.info("downtime_raw.csv not available.")
+
+        st.markdown("---")
+
+        # ── Variety mix per shift ─────────────────────────────
+        st.markdown('<div class="section-title">Variety Mix Handled</div>', unsafe_allow_html=True)
+        st.caption("How many varieties did the shift switch between? Frequent variety changes mean more setup time and re-calibration.")
+        if "variety" in ops_df.columns:
+            vmix = (ops_df.groupby(ops_df["run_date"].dt.normalize())["variety"]
+                          .nunique().reset_index().rename(columns={"run_date":"day", "variety":"varieties"}))
+            if not vmix.empty:
+                changeover_days = (vmix["varieties"] >= 2).sum()
+                avg_var_day = vmix["varieties"].mean()
+
+                vc1, vc2 = st.columns([1, 2])
+                with vc1:
+                    st.markdown(kpi_html("Days with 2+ Varieties", f"{changeover_days}",
+                                         f"{changeover_days / len(vmix) * 100:.0f}% of active days" if len(vmix) else ""),
+                                unsafe_allow_html=True)
+                    st.markdown(kpi_html("Avg Varieties / Day", f"{avg_var_day:.1f}"),
+                                unsafe_allow_html=True)
+                with vc2:
+                    fig_vmix = px.bar(vmix, x="day", y="varieties",
+                                      color_discrete_sequence=[NAVY],
+                                      labels={"day":"Date","varieties":"# Varieties"})
+                    fig_vmix.update_traces(hovertemplate="%{x|%a %d %b}<br>%{y} varieties<extra></extra>", name="")
+                    apply_plot_theme(fig_vmix, height=260)
+                    fig_vmix.update_layout(showlegend=False, xaxis_title=None,
+                                           yaxis=dict(tickmode='linear', dtick=1))
+                    st.plotly_chart(fig_vmix, use_container_width=True)
+
+        # ── Operator presence (only if data exists) ───────────
+        op_present = pd.DataFrame()
+        if has_machine or has_quality:
+            rows = []
+            for col in [c for c in ["operator_machine","operator_quality"] if c in ops_df.columns]:
+                vc = ops_df[col].dropna().astype(str).value_counts()
+                for name, cnt in vc.items():
+                    if name.strip():
+                        rows.append({"Role": col.replace("operator_","").title(), "Operator": name, "Runs": cnt})
+            op_present = pd.DataFrame(rows)
+        if not op_present.empty:
             st.markdown("---")
-            st.markdown('<div class="section-title">Retip Volume by Machine Operator</div>', unsafe_allow_html=True)
-            retip_op = ops_df.groupby("operator_machine", as_index=False)["retip"].sum()
-            retip_op = retip_op[retip_op["operator_machine"].astype(str).str.strip() != ""].sort_values("retip", ascending=False)
-            if not retip_op.empty:
-                fig_ret = px.bar(retip_op, x="operator_machine", y="retip",
-                                 color_discrete_sequence=[ROSE],
-                                 labels={"operator_machine":"Operator","retip":"Total Retip"})
-                apply_plot_theme(fig_ret, height=260)
-                st.plotly_chart(fig_ret, use_container_width=True)
+            st.markdown('<div class="section-title">Operator Coverage</div>', unsafe_allow_html=True)
+            st.caption("Who was on shift during the selected period — by role.")
+            st.dataframe(op_present.sort_values(["Role","Runs"], ascending=[True, False]),
+                         use_container_width=True, hide_index=True, height=180)
+
+
+# ═══════════════════════════════════════════════════════════════
+# TRAINING PAGE  (dec_file training records)
+# ═══════════════════════════════════════════════════════════════
+elif page.endswith("Training"):
+    st.markdown('<div class="section-title">Dec File Training Records</div>', unsafe_allow_html=True)
+    st.caption("Each row in dec_file_raw.csv is a training submission for the IQS defect detector. This page tracks training velocity, turnaround, defect coverage, and how training maps to live runs.")
+
+    if dec_file is None or dec_file.empty:
+        st.info("dec_file_raw.csv not found. Place it in the same directory as the dashboard and reload.")
+    else:
+        # ── Apply filters from sidebar ────────────────────────
+        tr_df = dec_file.copy()
+        if sel_tr_year != "All years" and "date_submit" in tr_df.columns:
+            tr_df = tr_df[tr_df["date_submit"].dt.year.astype("Int64").astype(str) == sel_tr_year]
+        if sel_tr_variety != "All varieties" and "variety" in tr_df.columns:
+            tr_df = tr_df[tr_df["variety"].astype(str) == sel_tr_variety]
+        if sel_tr_status != "All" and "status" in tr_df.columns:
+            tr_df = tr_df[tr_df["status"] == sel_tr_status]
+
+        if tr_df.empty:
+            st.info("No training records match the current filters.")
+        else:
+            # ── KPI strip ─────────────────────────────────────
+            n_total     = len(tr_df)
+            n_completed = (tr_df["status"] == "Completed").sum()
+            n_pending   = (tr_df["status"] == "Pending").sum()
+            avg_turn    = tr_df["turnaround_days"].dropna().mean() if "turnaround_days" in tr_df.columns else None
+            med_turn    = tr_df["turnaround_days"].dropna().median() if "turnaround_days" in tr_df.columns else None
+            n_varieties = tr_df["variety"].dropna().nunique() if "variety" in tr_df.columns else 0
+            total_def   = tr_df["defect_count"].sum() if "defect_count" in tr_df.columns else 0
+            avg_def     = tr_df["defect_count"].mean() if "defect_count" in tr_df.columns else 0
+
+            tk1, tk2, tk3, tk4, tk5 = st.columns(5)
+            tk1.markdown(kpi_html("Total Submissions", f"{n_total:,}"), unsafe_allow_html=True)
+            tk2.markdown(kpi_html("Completed", f"{n_completed:,}",
+                                  f"{n_pending:,} still pending" if n_pending else "All complete"), unsafe_allow_html=True)
+            tk3.markdown(kpi_html("Avg Turnaround",
+                                  f"{avg_turn:.0f} days" if pd.notna(avg_turn) else "N/A",
+                                  f"median {med_turn:.0f} d" if pd.notna(med_turn) else ""), unsafe_allow_html=True)
+            tk4.markdown(kpi_html("Varieties Covered", f"{n_varieties:,}"), unsafe_allow_html=True)
+            tk5.markdown(kpi_html("Defects Tagged", f"{int(total_def):,}",
+                                  f"avg {avg_def:.1f} per submission"), unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            # ── Training velocity over time ───────────────────
+            tv_left, tv_right = st.columns([2, 1])
+            with tv_left:
+                st.markdown('<div class="section-title">Training Velocity</div>', unsafe_allow_html=True)
+                st.caption("Submissions per month — how active is the training pipeline?")
+                if "date_submit" in tr_df.columns and tr_df["date_submit"].notna().any():
+                    tv_df = tr_df.dropna(subset=["date_submit"]).copy()
+                    tv_df["month"] = tv_df["date_submit"].dt.to_period("M").astype(str)
+                    monthly = tv_df.groupby("month").size().reset_index(name="submissions")
+                    fig_tv = px.bar(monthly, x="month", y="submissions",
+                                    color_discrete_sequence=[BLUE],
+                                    labels={"month":"Month submitted","submissions":"Submissions"})
+                    fig_tv.update_traces(hovertemplate="%{x}<br>%{y} submissions<extra></extra>", name="")
+                    apply_plot_theme(fig_tv, height=320)
+                    fig_tv.update_layout(showlegend=False)
+                    st.plotly_chart(fig_tv, use_container_width=True)
+
+            with tv_right:
+                st.markdown('<div class="section-title">Status Mix</div>', unsafe_allow_html=True)
+                status_counts = tr_df["status"].value_counts().reset_index()
+                status_counts.columns = ["Status","Count"]
+                fig_st_pie = px.pie(status_counts, names="Status", values="Count",
+                                    hole=0.55,
+                                    color="Status",
+                                    color_discrete_map={"Completed": EMERALD, "Pending": ROSE})
+                fig_st_pie.update_traces(textposition="outside", textinfo="label+percent",
+                                         hovertemplate="%{label}: %{value} (%{percent})<extra></extra>")
+                apply_plot_theme(fig_st_pie, height=320)
+                fig_st_pie.update_layout(showlegend=False)
+                st.plotly_chart(fig_st_pie, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Turnaround distribution + by variety ──────────
+            tt_left, tt_right = st.columns(2)
+
+            with tt_left:
+                st.markdown('<div class="section-title">Turnaround Distribution</div>', unsafe_allow_html=True)
+                st.caption("Days from submission to completion. Long tails = bottlenecks worth investigating.")
+                if "turnaround_days" in tr_df.columns and tr_df["turnaround_days"].notna().any():
+                    fig_tt = px.histogram(tr_df.dropna(subset=["turnaround_days"]),
+                                          x="turnaround_days", nbins=20,
+                                          color_discrete_sequence=[BLUE],
+                                          labels={"turnaround_days":"Turnaround (days)"})
+                    fig_tt.update_traces(hovertemplate="%{x:.0f} days: %{y} submissions<extra></extra>", name="")
+                    apply_plot_theme(fig_tt, height=320)
+                    fig_tt.update_layout(showlegend=False, yaxis_title="Submissions")
+                    st.plotly_chart(fig_tt, use_container_width=True)
+                else:
+                    st.info("No turnaround data available.")
+
+            with tt_right:
+                st.markdown('<div class="section-title">Median Turnaround by Variety</div>', unsafe_allow_html=True)
+                st.caption("Which varieties are slow to train? Could indicate harder-to-spot defects or low priority.")
+                if "turnaround_days" in tr_df.columns and "variety" in tr_df.columns:
+                    var_turn = (tr_df.dropna(subset=["turnaround_days","variety"])
+                                     .groupby("variety", as_index=False)["turnaround_days"].median()
+                                     .sort_values("turnaround_days", ascending=True))
+                    if not var_turn.empty:
+                        fig_vt = px.bar(var_turn, x="turnaround_days", y="variety", orientation="h",
+                                        color="turnaround_days",
+                                        color_continuous_scale=["#dbeeff", BLUE],
+                                        labels={"turnaround_days":"Median days","variety":"Variety"})
+                        fig_vt.update_coloraxes(showscale=False)
+                        fig_vt.update_traces(hovertemplate="%{y}: %{x:.0f} days<extra></extra>")
+                        apply_plot_theme(fig_vt, height=max(280, len(var_turn)*28))
+                        st.plotly_chart(fig_vt, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Training coverage by variety ──────────────────
+            st.markdown('<div class="section-title">Training Coverage by Variety</div>', unsafe_allow_html=True)
+            st.caption("How many training submissions per variety, and how many distinct defects each variety has been trained on.")
+            if "variety" in tr_df.columns:
+                cov = (tr_df.groupby("variety", as_index=False)
+                            .agg(submissions=("variety","size"),
+                                 unique_defects=("defects_list",
+                                                 lambda s: len(set(d for items in s for d in (items or []))))
+                                 if "defects_list" in tr_df.columns else ("variety","size"))
+                            .sort_values("submissions", ascending=False))
+
+                cf1, cf2 = st.columns(2)
+                with cf1:
+                    fig_cov = px.bar(cov.sort_values("submissions", ascending=True),
+                                     x="submissions", y="variety", orientation="h",
+                                     color_discrete_sequence=[BLUE],
+                                     labels={"submissions":"# Submissions","variety":"Variety"})
+                    fig_cov.update_traces(hovertemplate="%{y}: %{x} submissions<extra></extra>", name="")
+                    apply_plot_theme(fig_cov, height=max(300, len(cov)*30))
+                    fig_cov.update_layout(showlegend=False)
+                    st.plotly_chart(fig_cov, use_container_width=True)
+                with cf2:
+                    fig_def = px.bar(cov.sort_values("unique_defects", ascending=True),
+                                     x="unique_defects", y="variety", orientation="h",
+                                     color_discrete_sequence=[NAVY],
+                                     labels={"unique_defects":"# Unique Defects Trained","variety":"Variety"})
+                    fig_def.update_traces(hovertemplate="%{y}: %{x} unique defects<extra></extra>", name="")
+                    apply_plot_theme(fig_def, height=max(300, len(cov)*30))
+                    fig_def.update_layout(showlegend=False)
+                    st.plotly_chart(fig_def, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Most-trained defects (overall) ────────────────
+            st.markdown('<div class="section-title">Most-Trained Defects</div>', unsafe_allow_html=True)
+            st.caption("Across all selected submissions — which defects come up most often? These are your high-priority categories.")
+            if "defects_list" in tr_df.columns:
+                all_defects = [d for items in tr_df["defects_list"] for d in (items or [])]
+                if all_defects:
+                    def_counts = pd.Series(all_defects).value_counts().head(15).reset_index()
+                    def_counts.columns = ["Defect","Count"]
+                    def_counts_asc = def_counts.sort_values("Count", ascending=True)
+                    fig_dc = px.bar(def_counts_asc, x="Count", y="Defect", orientation="h",
+                                    text="Count",
+                                    color_discrete_sequence=[BLUE])
+                    fig_dc.update_traces(textposition="outside",
+                                         textfont=dict(family="DM Mono, monospace", size=12, color="#0f1d35"),
+                                         hovertemplate="%{y}: %{x}<extra></extra>", name="",
+                                         cliponaxis=False)
+                    apply_plot_theme(fig_dc, height=max(360, 30 * len(def_counts_asc)))
+                    fig_dc.update_layout(showlegend=False, xaxis_title=None)
+                    fig_dc.update_xaxes(range=[0, def_counts_asc["Count"].max() * 1.15])
+                    st.plotly_chart(fig_dc, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Pending submissions table ─────────────────────
+            pending_df = tr_df[tr_df["status"] == "Pending"]
+            if not pending_df.empty:
+                st.markdown('<div class="section-title">Pending Submissions — Action List</div>', unsafe_allow_html=True)
+                st.caption("Training submissions that have not yet been completed. Sort by oldest to find stuck items.")
+                today = pd.Timestamp.today().normalize()
+                pending_df = pending_df.copy()
+                pending_df["days_open"] = (today - pending_df["date_submit"]).dt.days
+                cols = [c for c in ["date_submit","variety","reference_dec","decfile_ver","decfile_type","defect_count","days_open","NOTES"] if c in pending_df.columns]
+                disp = pending_df[cols].rename(columns={
+                    "date_submit":"Submitted","variety":"Variety","reference_dec":"Ref Dec",
+                    "decfile_ver":"Version","decfile_type":"Type","defect_count":"# Defects",
+                    "days_open":"Days Open","NOTES":"Notes"
+                })
+                if "Submitted" in disp.columns:
+                    disp["Submitted"] = pd.to_datetime(disp["Submitted"]).dt.strftime("%Y-%m-%d")
+                disp = disp.sort_values("Days Open", ascending=False)
+                st.dataframe(disp, use_container_width=True, hide_index=True, height=320)
+
+            st.markdown("---")
+
+            # ── Cross-link: training → live runs ──────────────
+            st.markdown('<div class="section-title">Training → Live Runs Cross-Reference</div>', unsafe_allow_html=True)
+            st.caption("Has each trained dec-file version actually been used in production? Versions trained but unused = wasted effort. Versions used heavily = high impact.")
+            if "decfile_ver" in tr_df.columns and batches is not None and "decfile_version" in batches.columns:
+                ver_counts = (batches["decfile_version"].dropna().astype(str).str.strip()
+                                     .value_counts().reset_index())
+                ver_counts.columns = ["decfile_ver","batches_used"]
+                xref = tr_df.merge(ver_counts, on="decfile_ver", how="left")
+                xref["batches_used"] = xref["batches_used"].fillna(0).astype(int)
+
+                trained_total = len(xref)
+                trained_used  = (xref["batches_used"] > 0).sum()
+                trained_unused = trained_total - trained_used
+                pct_used = (trained_used / trained_total * 100) if trained_total else 0
+
+                xc1, xc2 = st.columns([1, 2])
+                with xc1:
+                    st.markdown(kpi_html("Versions Trained", f"{trained_total:,}"), unsafe_allow_html=True)
+                    st.markdown(kpi_html("Used in Production", f"{trained_used:,}",
+                                         f"{pct_used:.0f}% of trained"), unsafe_allow_html=True)
+                    st.markdown(kpi_html("Unused (yet)", f"{trained_unused:,}"), unsafe_allow_html=True)
+
+                with xc2:
+                    top_used = xref[xref["batches_used"] > 0].sort_values("batches_used", ascending=False).head(15)
+                    if not top_used.empty:
+                        cols = [c for c in ["decfile_ver","variety","date_complete","batches_used","defect_count"] if c in top_used.columns]
+                        disp_x = top_used[cols].rename(columns={
+                            "decfile_ver":"Version","variety":"Variety","date_complete":"Completed",
+                            "batches_used":"Batches Run","defect_count":"# Defects"
+                        })
+                        if "Completed" in disp_x.columns:
+                            disp_x["Completed"] = pd.to_datetime(disp_x["Completed"]).dt.strftime("%Y-%m-%d")
+                        st.dataframe(disp_x, use_container_width=True, hide_index=True, height=320)
+
+            st.markdown("---")
+
+            # ── Full record browser ───────────────────────────
+            with st.expander("Browse all training records (filtered)"):
+                show_cols = [c for c in ["date_submit","date_complete","variety","reference_dec",
+                                         "decfile_ver","decfile_type","defect_count","turnaround_days",
+                                         "status","NOTES"] if c in tr_df.columns]
+                browse = tr_df[show_cols].copy()
+                for dc in ("date_submit","date_complete"):
+                    if dc in browse.columns:
+                        browse[dc] = pd.to_datetime(browse[dc]).dt.strftime("%Y-%m-%d")
+                browse = browse.rename(columns={
+                    "date_submit":"Submitted","date_complete":"Completed","variety":"Variety",
+                    "reference_dec":"Ref","decfile_ver":"Version","decfile_type":"Type",
+                    "defect_count":"# Defects","turnaround_days":"Turnaround (d)","status":"Status",
+                    "NOTES":"Notes"
+                })
+                st.dataframe(browse.sort_values("Submitted", ascending=False),
+                             use_container_width=True, hide_index=True, height=400)
