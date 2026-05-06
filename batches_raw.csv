@@ -1,4 +1,4 @@
-batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile_version,defect_1,defect_2,defect_3,leaf_present,premium,premium%,notes_batches
+batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile_version,defect_1,defect_2,defect_3,leaf_present,premium,premium_red%,notes_batches
 8285,bundara,granny_smith,,,,Z008,,,,,,,
 8286,plunketts,pink_lady,,,,,,,,,,,
 8289,googs,pink_lady,,,,,,,,,,,
@@ -84,73 +84,90 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8454,bundara,kanzi,,,,,,,,,,,
 8455,parris,gala,,,,,,,,,,,
 8458,googs,gala,,,,,,,,,,,
-8462,plunketts,pink_lady,22/04/2025,22/04/2025,,,,,,,,,
-8463,bundara,pink_lady,23/04/2025,23/04/2025,,,,,,,,,
-8466,bundara,granny_smith,11/03/2026,11/03/2026,,,,,,,,,
+8462,plunketts,pink_lady,2025-04-22,2025-04-22,,,,,,,,,
+8463,bundara,pink_lady,2025-04-23,2025-04-23,,,,,,,,,
+8466,bundara,granny_smith,2026-03-11,2026-03-11,,,,,,,,,
 8467,plunketts,granny_smith,,,,,,,,,,,
-8471,bundara,kanzi,16/03/2026,16/03/2026,,,,,,,,,
-8474,bestview_orchards,gala,03/03/2026,03/03/2026,,,,,,,,,
-8477,bundara,rockit,10/03/2026,10/03/2026,,,,,,,,,
-8479,bundara,rockit,13/03/2026,13/03/2026,,,,,,,,,
-8481,bestview_orchards,gala,03/03/2026,03/03/2026,,,,,,,,,
-8486,yuvi_bhinder_farm,gala,24/02/2026,24/02/2026,,,,,,,,,
-8487,parris,gala,25/02/2026,25/02/2026,,,,,,,,,
-8482,bestview_orchards,gala,28/02/2026,28/02/2026,,,,,,,,,
-8489,bundara,pink_lady,22/04/2025,22/04/2025,,,,,,,,,
-8490,plunketts,granny_smith,18/03/2026,18/03/2026,,,,,,,,,
-8493,bundara,rockit,16/03/2026,16/03/2026,,,,,,,,,
-8497,sagar produce,gala,03/03/2026,03/03/2026,,,,,,,,,
-8500,uppal,gala,03/03/2026,03/03/2026,,,,,,,,,
-8498,sagar ardmona,gala,25/02/2026,25/02/2026,,,,,,,,,
-8501,red_rich,kanzi,22/03/2026,22/03/2026,,,,,,,,,
-8502,bundara,kanzi,23/03/2026,23/03/2026,,,,,,,,,
-8503,bundara,rockit,24/03/2026,24/03/2026,,,,,,,,,
-8506,mj_hall,red_delicious,16/03/2026,16/03/2026,,,,,,,,,
-8507,red_rich,kanzi,24/03/2026,24/03/2026,,,,,,,,,
-8511,masalki,pink_lady,27/03/2026,27/03/2026,,,,,,,,,
-8518,bundara,rockit,25/03/2026,25/03/2026,,,,,,,,,
-8521,bundara,kanzi,24/03/2026,24/03/2026,,,,,,,,,
-8522,ardrossan,kanzi,28/03/2026,28/03/2026,,,,,,,,,
-8524,ardrossan,kanzi,28/03/2026,28/03/2026,,,,,,,,,
-8525,plunketts,granny_smith,20/03/2026,20/03/2026,,,,,,,,,
-8527,yuvi_bhinder_farm,granny_smith,24/03/2026,24/03/2026,,,,,,,,,
-8527,yuvi_bhinder_farm,granny_smith,24/03/2026,24/03/2026,,,,,,,,,
-8529,calimna_lenne ,granny_smith,30/03/2026,30/03/2026,,,,,,,,,
-8532,radevski,pink_lady,01/04/2026,01/04/2026,,,,,,,,,
-8534,bundara,pink_lady,31/03/2026,31/03/2026,,,,,,,,,
+8471,bundara,kanzi,2026-03-16,2026-03-16,,,,,,,,,
+8474,bestview_orchards,gala,2026-03-03,2026-03-03,,,,,,,,,
+8477,bundara,rockit,2026-03-10,2026-03-10,,,,,,,,,
+8479,bundara,rockit,2026-03-13,2026-03-13,,,,,,,,,
+8481,bestview_orchards,gala,2026-03-03,2026-03-03,,,,,,,,,
+8486,yuvi_bhinder_farm,gala,2026-02-24,2026-02-24,,,,,,,,,
+8487,parris,gala,2026-02-25,2026-02-25,,,,,,,,,
+8482,bestview_orchards,gala,2026-02-28,2026-02-28,,,,,,,,,
+8489,bundara,pink_lady,2025-04-22,2025-04-22,,,,,,,,,
+8490,plunketts,granny_smith,2026-03-18,2026-03-18,,,,,,,,,
+8493,bundara,rockit,2026-03-16,2026-03-16,,,,,,,,,
+8497,sagar produce,gala,2026-03-03,2026-03-03,,,,,,,,,
+8500,uppal,gala,2026-03-03,2026-03-03,,,,,,,,,
+8498,sagar ardmona,gala,2026-02-25,2026-02-25,,,,,,,,,
+8501,red_rich,kanzi,2026-03-22,2026-03-22,,,,,,,,,
+8502,bundara,kanzi,2026-03-23,2026-03-23,,,,,,,,,
+8503,bundara,rockit,2026-03-24,2026-03-24,,,,,,,,,
+8506,mj_hall,red_delicious,2026-03-16,2026-03-16,,,,,,,,,
+8507,red_rich,kanzi,2026-03-24,2026-03-24,,,,,,,,,
+8511,masalki,pink_lady,2026-03-27,2026-03-27,,,,,,,,,
+8518,bundara,rockit,2026-03-25,2026-03-25,,,,,,,,,
+8521,bundara,kanzi,2026-03-24,2026-03-24,,,,,,,,,
+8522,ardrossan,kanzi,2026-03-28,2026-03-28,,,,,,,,,
+8524,ardrossan,kanzi,2026-03-28,2026-03-28,,,,,,,,,
+8525,plunketts,granny_smith,2026-03-20,2026-03-20,,,,,,,,,
+8527,yuvi_bhinder_farm,granny_smith,2026-03-24,2026-03-24,,,,,,,,,
+8527,yuvi_bhinder_farm,granny_smith,2026-03-24,2026-03-24,,,,,,,,,
+8529,calimna_lenne ,granny_smith,2026-03-30,2026-03-30,,,,,,,,,
+8532,radevski,pink_lady,2026-04-01,2026-04-01,,,,,,,,,
+8534,bundara,pink_lady,2026-03-31,2026-03-31,,,,,,,,,
 8536,sciacca,granny_smith,,,,,,,,,,,
-8537,bundara,rockit,01/04/2026,01/04/2026,,,,,,,,,
-8539,ardrossan,kanzi,03/04/2026,03/04/2026,,,,,,,,,
-8542,calimna_lenne ,bravo,01/04/2026,01/04/2026,,,,,,,,,
-8543,seven_springs,kanzi,02/04/2026,02/04/2026,,,,,,,,,
-8548,plunketts,pink_lady,07/04/2026,07/04/2026,,,,,,,,,
-8549,bundara,kanzi,02/04/2026,02/04/2026,,,,,,,,,
-8552,nicol,kanzi,09/04/2026,09/04/2026,,,,,,,,,
-8554,pottenger,gala,17/02/2026,17/02/2026,,,,,,,,,
-8555,googs,gala,18/02/2026,18/02/2026,,,,,,,,,
-8559,adm_farm,pink_lady,11/04/2026,11/04/2026,,,,,,,,,
-8560,bundara,pink_lady,10/04/2026,10/04/2026,,,,,,,,,
-8563,plunketts,pink_lady,11/04/2026,11/04/2026,,,,,,,,,
-8564,plunketts,pink_lady,11/04/2026,11/04/2026,,,,,,,,,
-8567,sagar_produce,granny_smith,11/04/2026,11/04/2026,,,,,,,,,
-8569,plunketts,granny_smith,20/03/2026,20/03/2026,,,,,,,,,
-8570,acn_orchards,granny_smith,11/04/2026,11/04/2026,,,,,,,,,
-8571,pottenger,gala,16/02/2026,19/02/2026,,O004,holes,,,no,yes,50,red%:595
-8577,googs,gala,12/02/2026,19/02/2026,"G3,G5",O004,holes,sunburn,,no,yes,45,
-8581,bundara,gala,14/02/2026,14/02/2026,B4,O004,marks_skin,holes,sunburn,no,yes,45,red%:597
-8583,mj_hall,modi,16/04/2026,16/04/2026,,O004,holes,russets,sunburn,no,no,80,gala dec file
-8590,ardrossan,kanzi,07/04/2026,09/04/2026,,N002,holes,stem_crack,lenticel,no,no,0,leaf_retip=no
-8591,plunketts,pink_lady,14/04/2026,15/04/2026,P7,O021,bruises,lenticel,holes,no,yes,40,red%:586
-8592,adm_farm,pink_lady,18/04/2026,18/04/2026,,O021,holes,bruises,decay,yes,yes,40,red%:586
-8596,pottenger,pink_lady,16/04/2026,17/04/2026,,O021,major,calyx_minor,scab_minor,yes,no,40,scab_minor affecting modes on holes
-8597,bhangu,pink_lady,17/04/2026,17/04/2026,,O021,decay,limrubs,,yes,no,40,big size fruit
-8600,hazara,bravo,10/04/2026,14/04/2026,,J013,sunburn_major,crack_skin,holes,no,no,0,samples collected
-8601,kaarimba,bravo,18/04/2026,18/04/2026,,J013,cuts,dirt_stem,san_jose,no,no,0,samples collected
-8607,bundara,pink_lady,16/04/2026,16/04/2026,B15,O021,limrubs,major,bruises,no,yes,40,red%:586
-8610,plunketts,pink_lady,16/04/2026,18/04/2026,P18,O021,scab,insect,bruises,no,yes,40,red%:586
-8614,yuvi_bhinder_farm,granny_smith,23/04/2026,23/04/2026,,Z011,bruises,sunburn,leaf,yes,no,0,Office green%:433
-8619,googs,gala,10/04/2026,12/04/2026,"G3,G5",O004,holes,sunburn,russets,no,yes,45,
-8622,bundara,gala,13/02/2026,13/02/2026,"B4,B6",O004,holes,sunburn,marks_skin,no,yes,45,
-8629,hazara,bravo,14/04/2026,17/04/2026,,J013,sunburn_major,major,hails_major,yes,no,0,
-8635,sciacca,granny_smith,28/04/2026,28/04/2026,contract,Z011,dirt,holes,leaf_calyx,no,no,0,new decfile applied
-8636,sciacca,pink_lady,28/04/2026,29/04/2026,contract,O021,dirt,bruises,holes,yes,no,0,
+8537,bundara,rockit,2026-04-01,2026-04-01,,,,,,,,,
+8539,ardrossan,kanzi,2026-04-03,2026-04-03,,,,,,,,,
+8542,calimna_lenne ,bravo,2026-04-01,2026-04-01,,,,,,,,,
+8543,seven_springs,kanzi,2026-04-02,2026-04-02,,,,,,,,,
+8548,plunketts,pink_lady,2026-04-07,2026-04-07,,,,,,,,,
+8549,bundara,kanzi,2026-04-02,2026-04-02,,,,,,,,,
+8552,nicol,kanzi,2026-04-09,2026-04-09,,,,,,,,,
+8554,pottenger,gala,2026-02-17,2026-02-17,,,,,,,,,
+8555,googs,gala,2026-02-18,2026-02-18,,,,,,,,,
+8559,adm_farm,pink_lady,2026-04-11,2026-04-11,,,,,,,,,
+8560,bundara,pink_lady,2026-04-10,2026-04-10,,,,,,,,,
+8563,plunketts,pink_lady,2026-04-11,2026-04-11,,,,,,,,,
+8564,plunketts,pink_lady,2026-04-11,2026-04-11,,,,,,,,,
+8567,sagar_produce,granny_smith,2026-04-11,2026-04-11,,,,,,,,,
+8569,plunketts,granny_smith,2026-03-20,2026-03-20,,,,,,,,,
+8570,acn_orchards,granny_smith,2026-04-11,2026-04-11,,,,,,,,,
+8571,pottenger,gala,2026-02-16,2026-02-19,,O004,holes,,,no,yes,50,red%:595
+8577,googs,gala,2026-02-12,2026-02-19,"G3,G5",O004,holes,sunburn,,no,yes,45,
+8581,bundara,gala,2026-02-14,2026-02-14,B4,O004,marks_skin,holes,sunburn,no,yes,45,red%:597
+8583,mj_hall,modi,2026-04-16,2026-04-16,,O004,holes,russets,sunburn,no,no,80,gala dec file
+8590,ardrossan,kanzi,2026-04-07,2026-04-09,,N002,holes,stem_crack,lenticel,no,no,0,leaf_retip=no
+8591,plunketts,pink_lady,2026-04-14,2026-04-15,P7,O021,bruises,lenticel,holes,no,yes,40,red%:586
+8592,adm_farm,pink_lady,2026-04-18,2026-04-18,,O021,holes,bruises,decay,yes,yes,40,red%:586
+8596,pottenger,pink_lady,2026-04-16,2026-04-17,,O021,major,calyx_minor,scab_minor,yes,no,40,scab_minor affecting modes on holes
+8597,bhangu,pink_lady,2026-04-17,2026-04-17,,O021,decay,lenticel,,yes,no,40,big size fruit
+8600,hazara,bravo,2026-04-10,2026-04-14,,J013,sunburn_major,crack_skin,holes,no,no,0,samples collected
+8601,kaarimba,bravo,2026-04-18,2026-04-18,,J013,cuts,dirt_stem,san_jose,no,no,0,samples collected
+8607,bundara,pink_lady,2026-04-16,2026-04-16,B15,O021,lenticel,major,bruises,no,yes,40,red%:586
+8610,plunketts,pink_lady,2026-04-16,2026-04-18,P18,O021,scab,insect,bruises,no,yes,40,red%:586
+8614,yuvi_bhinder_farm,granny_smith,2026-04-23,2026-04-23,,Z011,bruises,sunburn,leaf,yes,no,0,Office green%:433
+8619,googs,gala,2026-04-10,2026-04-12,"G3,G5",O004,holes,sunburn,russets,no,yes,45,
+8622,bundara,gala,2026-02-13,2026-02-13,"B4,B6",O004,holes,sunburn,marks_skin,no,yes,45,
+8629,hazara,bravo,2026-04-14,2026-04-17,,J013,sunburn_major,major,hails_major,yes,no,0,
+8635,sciacca,granny_smith,2026-04-28,2026-04-28,contract,Z011,dirt,holes,leaf_calyx,no,no,0,new decfile applied
+8636,sciacca,pink_lady,2026-04-28,2026-04-29,contract,O021,dirt,bruises,holes,yes,no,0,
+8643,sagar ardmona,pink_lady,2026-04-22,2026-04-24,,O022,lenticel,calyx_minor,leaf,yes,yes,40,new decfile applied
+8644,gs_farms_australia,pink_lady,2026-04-22,2026-04-23,,O022,bruises,leaf,holes,yes,yes,40,
+8645,bhangu,pink_lady,2026-04-20,2026-04-23,,O022,major,holes,scab,no,yes,40,82-165 premium back to c1
+8646,adm_farm,pink_lady,2026-04-20,2026-04-20,,O022,leaf,holes,major,yes,yes,40,
+8647,plunketts,pink_lady,2026-04-22,2026-04-22,P18,O022,lenticel,,,no,yes,40,
+8649,plunketts,pink_lady,2026-04-21,2026-04-23,P12,O022,russets_stem,insect,lump,no,yes,40,ifa from 3 to 4.5
+8652,ardrossan,kanzi,2026-04-21,2026-04-21,,N003,stem_average,bruises,leaf,yes,no,0,manual bin
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
