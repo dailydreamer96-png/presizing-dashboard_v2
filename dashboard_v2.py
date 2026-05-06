@@ -755,6 +755,7 @@ if st.session_state.show_filters:
                 "View by",
                 ["Yearly", "Monthly", "Weekly"],
                 horizontal=True,
+                index=1,  # default to Monthly
                 key="s_period",
             )
         summary_df = runs.dropna(subset=["run_date"]).copy()
@@ -1094,9 +1095,12 @@ if page.endswith("Summary"):
 
     st.markdown("---")
 
-    # ── NEW: Bins/Hour by Grower bar chart ──────────────────
+    # ── Bins/Hour by Grower bar chart — scoped to selected period ──
     if "bins_per_hour_row" in summary_filtered.columns:
-        st.markdown('<div class="section-title">Throughput Efficiency by Grower</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="section-title">Throughput Efficiency by Grower — {selected_period_label}</div>',
+            unsafe_allow_html=True
+        )
         bph_grower = (
             summary_filtered.groupby("grower", as_index=False)
             .apply(lambda g: pd.Series({
@@ -1110,15 +1114,17 @@ if page.endswith("Summary"):
         if not bph_grower.empty:
             overall_bph = cur_bph
             fig_bph = px.bar(bph_grower, x="bins_per_hour", y="grower", orientation="h",
-                             color="bins_per_hour", color_continuous_scale=["#1e2435", AMBER],
+                             color="bins_per_hour", color_continuous_scale=["#1e2435", BLUE],
                              labels={"bins_per_hour": "Bins/hr", "grower": "Grower"})
             if overall_bph:
                 fig_bph.add_vline(x=overall_bph, line_dash="dot", line_color=ROSE,
                                   annotation_text=f"Avg {overall_bph:.1f}", annotation_font_color=ROSE)
             fig_bph.update_coloraxes(showscale=False)
-            fig_bph.update_traces(hovertemplate="%{x:.1f} bins/hr")
+            fig_bph.update_traces(hovertemplate="%{x:.1f} bins/hr<extra></extra>", name="")
             apply_plot_theme(fig_bph, height=max(280, len(bph_grower)*32))
             st.plotly_chart(fig_bph, use_container_width=True)
+        else:
+            st.info(f"No throughput data available for {selected_period_label}.")
 
     st.markdown("---")
 
