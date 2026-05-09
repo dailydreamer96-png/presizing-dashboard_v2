@@ -557,6 +557,28 @@ def load_csv(filename):
 
 def apply_plot_theme(fig, height=380):
     fig.update_layout(**PLOT_LAYOUT, height=height)
+    # Universal cleanup: any unnamed/None/'undefined' traces have their name blanked
+    # and gain a clean hover (no second box with the literal trace name).
+    for tr in fig.data:
+        if (not getattr(tr, "name", None)) or str(tr.name).lower() in ("undefined", "none", "nan", "trace 0"):
+            tr.update(name="")
+        # Append <extra></extra> if the hovertemplate doesn't already suppress the secondary box
+        ht = getattr(tr, "hovertemplate", None)
+        if ht and "<extra>" not in ht:
+            tr.update(hovertemplate=ht + "<extra></extra>")
+    # Wipe stray 'undefined' chart-level title, axis titles, and legend title
+    def _is_undef(v):
+        return v is None or str(v).strip().lower() in ("undefined", "none", "nan", "")
+    if fig.layout.title and _is_undef(fig.layout.title.text):
+        fig.update_layout(title=None)
+    if fig.layout.xaxis and fig.layout.xaxis.title and _is_undef(fig.layout.xaxis.title.text):
+        fig.update_xaxes(title=None)
+    if fig.layout.yaxis and fig.layout.yaxis.title and _is_undef(fig.layout.yaxis.title.text):
+        fig.update_yaxes(title=None)
+    if fig.layout.legend and fig.layout.legend.title and _is_undef(fig.layout.legend.title.text):
+        fig.update_layout(legend_title_text="")
+    if fig.layout.coloraxis and fig.layout.coloraxis.colorbar and _is_undef(fig.layout.coloraxis.colorbar.title.text):
+        fig.update_layout(coloraxis_colorbar_title_text="")
     return fig
 
 def pct_delta(current, previous):
@@ -606,15 +628,28 @@ def summarize_boundaries(series):
 # ─────────────────────────────────────────────────────────────
 # LOAD DATA
 # ─────────────────────────────────────────────────────────────
-runs     = load_csv("runs_raw.csv")
-batches  = load_csv("batches_raw.csv")
-changes  = load_csv("changes_raw.csv")
-downtime = load_csv("downtime_raw.csv")
-dec_file = load_csv("dec_file_raw.csv")
+runs       = load_csv("runs_raw.csv")
+batches    = load_csv("batches_raw.csv")
+changes    = load_csv("changes_raw.csv")
+downtime   = load_csv("downtime_raw.csv")
+dec_file   = load_csv("dec_file_raw.csv")
+mode_order = load_csv("mode_order.csv")
 
 if runs is None:
     st.error("runs_raw.csv not found.")
     st.stop()
+
+# ─────────────────────────────────────────────────────────────
+# CLEAN MODE_ORDER — authoritative list of modes per variety
+# Each row: mode_order, variety, mode
+# ─────────────────────────────────────────────────────────────
+if mode_order is not None:
+    for col in ("variety", "mode"):
+        if col in mode_order.columns:
+            mode_order[col] = mode_order[col].fillna("").astype(str).str.strip().replace("", pd.NA)
+    if "mode_order" in mode_order.columns:
+        mode_order["mode_order"] = pd.to_numeric(mode_order["mode_order"], errors="coerce")
+    mode_order = mode_order.dropna(subset=["variety", "mode"])
 
 # ─────────────────────────────────────────────────────────────
 # CLEAN DEC_FILE — training records
@@ -670,6 +705,17 @@ if dec_file is not None:
     dec_file["status"] = dec_file["date_complete"].apply(
         lambda d: "Completed" if pd.notna(d) else "Pending"
     )
+
+    # IFA vs IQS source.
+    #   IFA = trained in-house — marked by reference_dec == "ifa".
+    #         These complete on the same day they're submitted.
+    #   IQS = sent to Greefa for training — every other row.
+    def _classify_source(row):
+        ref = row.get("reference_dec")
+        if pd.notna(ref) and str(ref).strip().lower() == "ifa":
+            return "IFA"
+        return "IQS"
+    dec_file["training_source"] = dec_file.apply(_classify_source, axis=1)
 
 # ─────────────────────────────────────────────────────────────
 # CLEAN RUNS
@@ -768,7 +814,7 @@ st.markdown(f"""
     <p class="subtitle">Apple Packing · Presizing Department · Production Intelligence Dashboard</p>
   </div>
   <div class="page-header-right">
-    <span class="header-badge">LIVE DATA</span>
+    <span class="header-badge">WEEKLY UPDATE</span>
     <span class="header-meta">Last run: {date_str} &nbsp;·&nbsp; {len(runs):,} runs on record</span>
   </div>
 </div>
@@ -784,7 +830,7 @@ nav_col1, nav_col2 = st.columns([5, 1])
 with nav_col1:
     page = st.radio(
         "Page",
-        ["📊  Summary", "🎯  IQS", "🍏  Quality", "👷  Operators", "🧠  Training"],
+        ["📊  Summary", "🎯  IQS", "🍏  Quality", "👷  Operators", "🧠  Training", "🔎  Search"],
         label_visibility="collapsed",
         horizontal=True,
         key="nav_page",
@@ -932,20 +978,44 @@ if st.session_state.show_filters:
     elif page.endswith("Training"):
         if dec_file is None or dec_file.empty:
             st.info("dec_file_raw.csv not found — Training filters unavailable.")
-            sel_tr_year = "All years"; sel_tr_variety = "All varieties"; sel_tr_status = "All"
+            sel_tr_year = "All years"; sel_tr_variety = "All varieties"
+            sel_tr_status = "All"; sel_tr_source = "All sources"
         else:
-            f1, f2, f3 = st.columns(3)
+            f1, f2, f3, f4 = st.columns(4)
             year_opts = sorted(
                 dec_file["date_submit"].dropna().dt.year.astype(int).unique().tolist(),
                 reverse=True
             )
             with f1:
-                sel_tr_year = st.selectbox("📅  Year submitted", ["All years"] + [str(y) for y in year_opts], key="tr_year")
+                sel_tr_source = st.selectbox(
+                    "🏷️  Source",
+                    ["All sources", "IQS (Greefa)", "IFA (in-house)"],
+                    key="tr_source",
+                )
             with f2:
+                sel_tr_year = st.selectbox("📅  Year submitted", ["All years"] + [str(y) for y in year_opts], key="tr_year")
+            with f3:
                 tr_var_opts = sorted(dec_file["variety"].dropna().astype(str).unique().tolist())
                 sel_tr_variety = st.selectbox("🍎  Variety", ["All varieties"] + tr_var_opts, key="tr_variety")
-            with f3:
+            with f4:
                 sel_tr_status = st.selectbox("📋  Status", ["All", "Completed", "Pending"], key="tr_status")
+
+    elif page.endswith("Search"):
+        s1, s2 = st.columns([3, 1])
+        with s1:
+            search_query = st.text_input(
+                "🔎  Search",
+                value=st.session_state.get("search_q", ""),
+                placeholder="Type a run ID, grower, variety, batch, mode, defect, or any keyword…",
+                key="search_q",
+                label_visibility="visible",
+            )
+        with s2:
+            search_scope = st.selectbox(
+                "Where",
+                ["All sources", "Runs", "Batches", "IQS Changes", "Downtime", "Training"],
+                key="search_scope",
+            )
 
     st.markdown('</div>', unsafe_allow_html=True)
 else:
@@ -999,6 +1069,10 @@ else:
         sel_tr_year = st.session_state.get("tr_year", "All years")
         sel_tr_variety = st.session_state.get("tr_variety", "All varieties")
         sel_tr_status = st.session_state.get("tr_status", "All")
+        sel_tr_source = st.session_state.get("tr_source", "All sources")
+    elif page.endswith("Search"):
+        search_query = st.session_state.get("search_q", "")
+        search_scope = st.session_state.get("search_scope", "All sources")
 
 # ═══════════════════════════════════════════════════════════════
 # SUMMARY PAGE
@@ -1902,54 +1976,122 @@ elif page.endswith("IQS"):
         # ── Unchecked modes (separate section at bottom) ─────────
         st.markdown("---")
         st.markdown('<div class="section-title">Unchecked Modes for This Grower / Variety</div>', unsafe_allow_html=True)
-        st.caption("Modes seen for this **variety** across other growers, but not yet checked or adjusted for the **current grower**.")
+
+        if mode_order is not None and not mode_order.empty:
+            st.caption(
+                "Reference list comes from **mode_order.csv** — every mode IQS is configured to detect for this variety. "
+                "Modes you haven't yet checked or adjusted for the current grower appear below, with classes collapsed per mode."
+            )
+        else:
+            st.caption("Modes seen for this **variety** across other growers, but not yet checked or adjusted for the **current grower**.")
 
         next_modes_table = pd.DataFrame()
+
         if selected_mode_variety != "All varieties" and selected_mode_grower != "All growers":
+
+            # Reference universe of modes for this variety:
+            #   primary  = mode_order.csv (authoritative — even if never checked yet)
+            #   fallback = modes seen historically across all growers in changes_raw
+            ref_modes_set = set()
+            if mode_order is not None and "variety" in mode_order.columns and "mode" in mode_order.columns:
+                ref_for_var = mode_order[mode_order["variety"].astype(str) == selected_mode_variety]
+                ref_modes_set = set(ref_for_var["mode"].dropna().astype(str).tolist())
+
+            # Variety-wide history from changes_raw (across all growers) for boundary references + class info
             variety_mode_db = mode_df.copy()
             if "variety" in variety_mode_db.columns:
                 variety_mode_db = variety_mode_db[variety_mode_db["variety"].astype(str) == selected_mode_variety]
             if selected_version != "All versions" and "decfile_version" in variety_mode_db.columns:
                 variety_mode_db = variety_mode_db[variety_mode_db["decfile_version"].astype(str) == selected_version]
 
+            # If no mode_order list, fall back to historic modes
+            if not ref_modes_set and not variety_mode_db.empty and "mode" in variety_mode_db.columns:
+                ref_modes_set = set(variety_mode_db["mode"].dropna().astype(str).tolist())
+
+            # Modes the current grower HAS already touched — these get filtered out
             grower_mode_db = variety_mode_db.copy()
             if "grower" in grower_mode_db.columns:
                 grower_mode_db = grower_mode_db[grower_mode_db["grower"].astype(str) == selected_mode_grower]
+            checked_modes = set()
+            if not grower_mode_db.empty and "mode" in grower_mode_db.columns:
+                checked_modes = set(grower_mode_db["mode"].dropna().astype(str).tolist())
 
-            checked_pairs = set()
-            if not grower_mode_db.empty:
-                for keys, _ in grower_mode_db.groupby(["mode","check_class"], dropna=False):
-                    checked_pairs.add((str(keys[0]), str(keys[1])))
+            # Build one row per mode (classes collapsed)
+            order_lookup = {}
+            if mode_order is not None and "variety" in mode_order.columns and "mode_order" in mode_order.columns:
+                for _, r in mode_order[mode_order["variety"].astype(str) == selected_mode_variety].iterrows():
+                    if pd.notna(r.get("mode")) and pd.notna(r.get("mode_order")):
+                        order_lookup[str(r["mode"])] = int(r["mode_order"])
 
             rows = []
-            for keys, grp in variety_mode_db.groupby(["mode","check_class"], dropna=False):
-                mn = str(keys[0]); cc = str(keys[1])
-                if (mn, cc) in checked_pairs: continue
-                _, allb = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
-                rows.append({"Check": False, "Mode": mn, "Check Class": cc,
-                             "Reference Boundaries": allb, "Count": len(grp)})
+            for mode_name in ref_modes_set:
+                if mode_name in checked_modes:
+                    continue  # already checked for this grower
+
+                # Look up classes + reference boundaries seen across all growers for this mode
+                mode_hist = variety_mode_db[variety_mode_db["mode"].astype(str) == mode_name] if "mode" in variety_mode_db.columns else pd.DataFrame()
+                if not mode_hist.empty and "check_class" in mode_hist.columns:
+                    classes_seen = sorted({str(c) for c in mode_hist["check_class"].dropna().tolist() if str(c).strip()})
+                    classes_text = ", ".join(classes_seen) if classes_seen else "—"
+                else:
+                    classes_text = "—"
+
+                _, ref_boundaries = (
+                    summarize_boundaries(mode_hist["boundary_after"])
+                    if (not mode_hist.empty and "boundary_after" in mode_hist.columns)
+                    else ("", "—")
+                )
+                if not ref_boundaries:
+                    ref_boundaries = "—"
+
+                rows.append({
+                    "Check": False,
+                    "Order": order_lookup.get(mode_name, 9999),
+                    "Mode": mode_name,
+                    "Classes Covered": classes_text,
+                    "Reference Boundaries": ref_boundaries,
+                    "History Count": int(len(mode_hist)),
+                })
 
             if rows:
-                next_modes_table = pd.DataFrame(rows).sort_values("Count", ascending=False).reset_index(drop=True)
+                next_modes_table = (
+                    pd.DataFrame(rows)
+                    .sort_values("Order", ascending=True)
+                    .reset_index(drop=True)
+                )
 
         if selected_mode_variety == "All varieties" or selected_mode_grower == "All growers":
             st.info("Select a specific variety **and** grower in the sidebar to see unchecked modes.")
-        elif not next_modes_table.empty:
+        elif next_modes_table.empty:
+            if mode_order is not None and selected_mode_variety not in (mode_order["variety"].astype(str).unique() if "variety" in mode_order.columns else []):
+                st.info(
+                    f"**{selected_mode_variety}** isn't in **mode_order.csv** yet. "
+                    "Falling back to historical data — add this variety's modes to mode_order.csv to enable the authoritative checklist."
+                )
+            else:
+                st.success(
+                    f"All reference modes for **{selected_mode_variety}** have already been checked or adjusted "
+                    f"for **{selected_mode_grower}**."
+                )
+        else:
             st.data_editor(
-                next_modes_table, use_container_width=True, height=300, hide_index=True,
+                next_modes_table, use_container_width=True, height=320, hide_index=True,
                 column_config={
                     "Check": st.column_config.CheckboxColumn("✓", width="small"),
+                    "Order": st.column_config.NumberColumn("#", width="small",
+                        help="Position in mode_order.csv — operator's recommended order"),
                     "Mode": st.column_config.TextColumn("Mode", width="medium"),
-                    "Check Class": st.column_config.TextColumn("Check Class", width="small"),
-                    "Reference Boundaries": st.column_config.TextColumn("Reference Boundaries", width="large"),
-                    "Count": st.column_config.NumberColumn("Count", width="small"),
+                    "Classes Covered": st.column_config.TextColumn("Classes Covered", width="medium",
+                        help="Check classes seen historically across all growers for this variety"),
+                    "Reference Boundaries": st.column_config.TextColumn("Reference Boundaries", width="large",
+                        help="After-boundaries seen across all growers for the same variety"),
+                    "History Count": st.column_config.NumberColumn("Hist.", width="small",
+                        help="Historical change records for this mode (across all growers)"),
                 },
-                column_order=["Check","Mode","Check Class","Reference Boundaries","Count"],
-                disabled=["Mode","Check Class","Reference Boundaries","Count"],
+                column_order=["Check","Order","Mode","Classes Covered","Reference Boundaries","History Count"],
+                disabled=["Order","Mode","Classes Covered","Reference Boundaries","History Count"],
                 key="unchecked_mode_editor"
             )
-        else:
-            st.info("No additional unchecked modes for this grower under the selected variety.")
 
 # ═══════════════════════════════════════════════════════════════
 # OPERATORS PAGE
@@ -2146,13 +2288,21 @@ elif page.endswith("Operators"):
 # ═══════════════════════════════════════════════════════════════
 elif page.endswith("Training"):
     st.markdown('<div class="section-title">Dec File Training Records</div>', unsafe_allow_html=True)
-    st.caption("Each row in dec_file_raw.csv is a training submission for the IQS defect detector. This page tracks training velocity, turnaround, defect coverage, and how training maps to live runs.")
+    st.caption(
+        "Two training streams feed the IQS detector: **IQS** submissions are sent out to Greefa "
+        "(turnaround in days/weeks), while **IFA** are trained in-house on the same day. "
+        "This page tracks velocity, turnaround, repeat training, defect coverage, and how training maps to live runs."
+    )
 
     if dec_file is None or dec_file.empty:
         st.info("dec_file_raw.csv not found. Place it in the same directory as the dashboard and reload.")
     else:
         # ── Apply filters from sidebar ────────────────────────
         tr_df = dec_file.copy()
+        if sel_tr_source == "IQS (Greefa)":
+            tr_df = tr_df[tr_df["training_source"] == "IQS"]
+        elif sel_tr_source == "IFA (in-house)":
+            tr_df = tr_df[tr_df["training_source"] == "IFA"]
         if sel_tr_year != "All years" and "date_submit" in tr_df.columns:
             tr_df = tr_df[tr_df["date_submit"].dt.year.astype("Int64").astype(str) == sel_tr_year]
         if sel_tr_variety != "All varieties" and "variety" in tr_df.columns:
@@ -2163,12 +2313,27 @@ elif page.endswith("Training"):
         if tr_df.empty:
             st.info("No training records match the current filters.")
         else:
-            # ── KPI strip ─────────────────────────────────────
+            # ── Source split first — quick context ─────────────
+            n_iqs = (tr_df["training_source"] == "IQS").sum()
+            n_ifa = (tr_df["training_source"] == "IFA").sum()
+            sk1, sk2, sk3 = st.columns(3)
+            sk1.markdown(kpi_html("IQS Submissions", f"{n_iqs:,}",
+                                  "sent to Greefa for training"), unsafe_allow_html=True)
+            sk2.markdown(kpi_html("IFA Submissions", f"{n_ifa:,}",
+                                  "trained in-house, same-day"), unsafe_allow_html=True)
+            split_pct = (n_ifa / (n_iqs + n_ifa) * 100) if (n_iqs + n_ifa) > 0 else 0
+            sk3.markdown(kpi_html("In-House Share", f"{split_pct:.1f}%",
+                                  "of total training volume"), unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            # ── KPI strip — IQS only for turnaround stats since IFA is always 0d ──
+            iqs_only = tr_df[tr_df["training_source"] == "IQS"]
             n_total     = len(tr_df)
             n_completed = (tr_df["status"] == "Completed").sum()
             n_pending   = (tr_df["status"] == "Pending").sum()
-            avg_turn    = tr_df["turnaround_days"].dropna().mean() if "turnaround_days" in tr_df.columns else None
-            med_turn    = tr_df["turnaround_days"].dropna().median() if "turnaround_days" in tr_df.columns else None
+            avg_turn    = iqs_only["turnaround_days"].dropna().mean() if "turnaround_days" in iqs_only.columns else None
+            med_turn    = iqs_only["turnaround_days"].dropna().median() if "turnaround_days" in iqs_only.columns else None
             n_varieties = tr_df["variety"].dropna().nunique() if "variety" in tr_df.columns else 0
             total_def   = tr_df["defect_count"].sum() if "defect_count" in tr_df.columns else 0
             avg_def     = tr_df["defect_count"].mean() if "defect_count" in tr_df.columns else 0
@@ -2177,9 +2342,9 @@ elif page.endswith("Training"):
             tk1.markdown(kpi_html("Total Submissions", f"{n_total:,}"), unsafe_allow_html=True)
             tk2.markdown(kpi_html("Completed", f"{n_completed:,}",
                                   f"{n_pending:,} still pending" if n_pending else "All complete"), unsafe_allow_html=True)
-            tk3.markdown(kpi_html("Avg Turnaround",
+            tk3.markdown(kpi_html("IQS Avg Turnaround",
                                   f"{avg_turn:.0f} days" if pd.notna(avg_turn) else "N/A",
-                                  f"median {med_turn:.0f} d" if pd.notna(med_turn) else ""), unsafe_allow_html=True)
+                                  f"median {med_turn:.0f} d (Greefa only)" if pd.notna(med_turn) else ""), unsafe_allow_html=True)
             tk4.markdown(kpi_html("Varieties Covered", f"{n_varieties:,}"), unsafe_allow_html=True)
             tk5.markdown(kpi_html("Defects Tagged", f"{int(total_def):,}",
                                   f"avg {avg_def:.1f} per submission"), unsafe_allow_html=True)
@@ -2189,33 +2354,36 @@ elif page.endswith("Training"):
             # ── Training velocity over time ───────────────────
             tv_left, tv_right = st.columns([2, 1])
             with tv_left:
-                st.markdown('<div class="section-title">Training Velocity</div>', unsafe_allow_html=True)
-                st.caption("Submissions per month — how active is the training pipeline?")
+                st.markdown('<div class="section-title">Training Velocity — IQS vs IFA</div>', unsafe_allow_html=True)
+                st.caption("Submissions per month, split by source. IFA bars (in-house) sit alongside IQS bars (Greefa).")
                 if "date_submit" in tr_df.columns and tr_df["date_submit"].notna().any():
                     tv_df = tr_df.dropna(subset=["date_submit"]).copy()
                     tv_df["month"] = tv_df["date_submit"].dt.to_period("M").astype(str)
-                    monthly = tv_df.groupby("month").size().reset_index(name="submissions")
+                    monthly = (tv_df.groupby(["month", "training_source"])
+                                    .size().reset_index(name="submissions"))
                     fig_tv = px.bar(monthly, x="month", y="submissions",
-                                    color_discrete_sequence=[BLUE],
-                                    labels={"month":"Month submitted","submissions":"Submissions"})
-                    fig_tv.update_traces(hovertemplate="%{x}<br>%{y} submissions<extra></extra>", name="")
+                                    color="training_source", barmode="stack",
+                                    color_discrete_map={"IQS": BLUE, "IFA": EMERALD},
+                                    labels={"month":"Month submitted",
+                                            "submissions":"Submissions",
+                                            "training_source":"Source"})
+                    fig_tv.update_traces(hovertemplate="%{x}<br>%{y} submissions<extra>%{fullData.name}</extra>")
                     apply_plot_theme(fig_tv, height=320)
-                    fig_tv.update_layout(showlegend=False)
                     st.plotly_chart(fig_tv, use_container_width=True)
 
             with tv_right:
-                st.markdown('<div class="section-title">Status Mix</div>', unsafe_allow_html=True)
-                status_counts = tr_df["status"].value_counts().reset_index()
-                status_counts.columns = ["Status","Count"]
-                fig_st_pie = px.pie(status_counts, names="Status", values="Count",
-                                    hole=0.55,
-                                    color="Status",
-                                    color_discrete_map={"Completed": EMERALD, "Pending": ROSE})
-                fig_st_pie.update_traces(textposition="outside", textinfo="label+percent",
-                                         hovertemplate="%{label}: %{value} (%{percent})<extra></extra>")
-                apply_plot_theme(fig_st_pie, height=320)
-                fig_st_pie.update_layout(showlegend=False)
-                st.plotly_chart(fig_st_pie, use_container_width=True)
+                st.markdown('<div class="section-title">Source Mix</div>', unsafe_allow_html=True)
+                src_counts = tr_df["training_source"].value_counts().reset_index()
+                src_counts.columns = ["Source","Count"]
+                fig_src_pie = px.pie(src_counts, names="Source", values="Count",
+                                     hole=0.55,
+                                     color="Source",
+                                     color_discrete_map={"IQS": BLUE, "IFA": EMERALD})
+                fig_src_pie.update_traces(textposition="outside", textinfo="label+percent",
+                                          hovertemplate="%{label}: %{value} (%{percent})<extra></extra>")
+                apply_plot_theme(fig_src_pie, height=320)
+                fig_src_pie.update_layout(showlegend=False)
+                st.plotly_chart(fig_src_pie, use_container_width=True)
 
             st.markdown("---")
 
@@ -2286,6 +2454,112 @@ elif page.endswith("Training"):
                     apply_plot_theme(fig_def, height=max(300, len(cov)*30))
                     fig_def.update_layout(showlegend=False)
                     st.plotly_chart(fig_def, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Repeated Training: defects retrained per variety ────────
+            st.markdown('<div class="section-title">Repeated Training — Defects Trained Multiple Times</div>', unsafe_allow_html=True)
+            st.caption(
+                "When the same **defect** is trained more than once for the same **variety**, "
+                "it usually means the previous round didn't perform well in production. "
+                "These are your candidates for deeper review."
+            )
+            if "defects_list" in tr_df.columns and "variety" in tr_df.columns:
+                # Build long-form: (variety, defect, date_submit, decfile_ver, source)
+                long_rows = []
+                for _, r in tr_df.iterrows():
+                    var = r.get("variety")
+                    defs = r.get("defects_list") or []
+                    for d in defs:
+                        long_rows.append({
+                            "variety": var, "defect": d,
+                            "date_submit": r.get("date_submit"),
+                            "decfile_ver": r.get("decfile_ver"),
+                            "source": r.get("training_source"),
+                        })
+                long_df = pd.DataFrame(long_rows)
+
+                if not long_df.empty:
+                    repeat_counts = (long_df.dropna(subset=["variety","defect"])
+                                            .groupby(["variety","defect"])
+                                            .size().reset_index(name="train_count"))
+                    repeats_only = repeat_counts[repeat_counts["train_count"] >= 2].copy()
+
+                    rk1, rk2, rk3 = st.columns(3)
+                    n_repeated_pairs = len(repeats_only)
+                    n_total_pairs    = len(repeat_counts)
+                    repeat_share = (n_repeated_pairs / n_total_pairs * 100) if n_total_pairs else 0
+                    most_repeated = repeats_only["train_count"].max() if not repeats_only.empty else 0
+
+                    rk1.markdown(kpi_html(
+                        "Defect–Variety Pairs Retrained",
+                        f"{n_repeated_pairs:,}",
+                        f"{repeat_share:.1f}% of all pairs"
+                    ), unsafe_allow_html=True)
+                    rk2.markdown(kpi_html(
+                        "Highest Repeat Count",
+                        f"{int(most_repeated)}×" if most_repeated else "—",
+                        "for a single defect/variety pair"
+                    ), unsafe_allow_html=True)
+                    n_pairs_3plus = (repeats_only["train_count"] >= 3).sum()
+                    rk3.markdown(kpi_html(
+                        "Trained 3+ Times",
+                        f"{n_pairs_3plus:,}",
+                        "high-priority review candidates"
+                    ), unsafe_allow_html=True)
+
+                    if not repeats_only.empty:
+                        # Make a readable label
+                        repeats_only["pair"] = (
+                            repeats_only["variety"].astype(str).str.replace("_"," ").str.title()
+                            + " — " + repeats_only["defect"].astype(str)
+                        )
+                        rep_show = (repeats_only.sort_values("train_count", ascending=True)
+                                                .tail(20))  # top 20 most retrained
+                        fig_rep = px.bar(rep_show, x="train_count", y="pair", orientation="h",
+                                         text="train_count",
+                                         color_discrete_sequence=[ROSE])
+                        fig_rep.update_traces(
+                            textposition="outside",
+                            textfont=dict(family="DM Mono, monospace", size=12, color="#0f1d35"),
+                            hovertemplate="%{y}<br>Trained %{x}× <extra></extra>",
+                            cliponaxis=False, name="")
+                        apply_plot_theme(fig_rep, height=max(320, 28 * len(rep_show)))
+                        fig_rep.update_layout(showlegend=False, xaxis_title="Times Trained",
+                                              yaxis_title=None)
+                        fig_rep.update_xaxes(range=[0, rep_show["train_count"].max() * 1.18])
+                        st.plotly_chart(fig_rep, use_container_width=True)
+
+                        # Detail table — every retrained pair with submission dates
+                        with st.expander("See every retrained pair with full submission history"):
+                            detail_rows = []
+                            for _, r in repeats_only.iterrows():
+                                hist = long_df[
+                                    (long_df["variety"] == r["variety"]) &
+                                    (long_df["defect"] == r["defect"])
+                                ].sort_values("date_submit")
+                                dates_str = ", ".join(
+                                    pd.to_datetime(hist["date_submit"]).dt.strftime("%Y-%m-%d").tolist()
+                                )
+                                versions_str = ", ".join(
+                                    sorted({str(v) for v in hist["decfile_ver"].dropna().tolist() if str(v).strip()})
+                                )
+                                sources_str = ", ".join(sorted(set(hist["source"].dropna().tolist())))
+                                detail_rows.append({
+                                    "Variety": r["variety"],
+                                    "Defect": r["defect"],
+                                    "Train Count": int(r["train_count"]),
+                                    "Sources": sources_str,
+                                    "Versions": versions_str,
+                                    "Submission Dates": dates_str,
+                                })
+                            detail_df = pd.DataFrame(detail_rows).sort_values(
+                                "Train Count", ascending=False
+                            )
+                            st.dataframe(detail_df, use_container_width=True,
+                                         hide_index=True, height=360)
+                    else:
+                        st.success("No defect–variety pair has been retrained yet — every defect was trained exactly once for its variety.")
 
             st.markdown("---")
 
@@ -2371,7 +2645,7 @@ elif page.endswith("Training"):
 
             # ── Full record browser ───────────────────────────
             with st.expander("Browse all training records (filtered)"):
-                show_cols = [c for c in ["date_submit","date_complete","variety","reference_dec",
+                show_cols = [c for c in ["training_source","date_submit","date_complete","variety","reference_dec",
                                          "decfile_ver","decfile_type","defect_count","turnaround_days",
                                          "status","NOTES"] if c in tr_df.columns]
                 browse = tr_df[show_cols].copy()
@@ -2379,6 +2653,7 @@ elif page.endswith("Training"):
                     if dc in browse.columns:
                         browse[dc] = pd.to_datetime(browse[dc]).dt.strftime("%Y-%m-%d")
                 browse = browse.rename(columns={
+                    "training_source":"Source",
                     "date_submit":"Submitted","date_complete":"Completed","variety":"Variety",
                     "reference_dec":"Ref","decfile_ver":"Version","decfile_type":"Type",
                     "defect_count":"# Defects","turnaround_days":"Turnaround (d)","status":"Status",
@@ -2386,3 +2661,160 @@ elif page.endswith("Training"):
                 })
                 st.dataframe(browse.sort_values("Submitted", ascending=False),
                              use_container_width=True, hide_index=True, height=400)
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# SEARCH PAGE  — keyword lookup across runs, batches, IQS changes,
+# downtime, and training records.
+# ═══════════════════════════════════════════════════════════════
+elif page.endswith("Search"):
+    st.markdown('<div class="section-title">Search Across All Records</div>', unsafe_allow_html=True)
+    st.caption(
+        "Type any keyword: a run ID, grower name, variety, batch number, mode, defect — or part of any. "
+        "Use the **Where** filter to narrow which dataset to look in. "
+        "Results are case-insensitive."
+    )
+
+    q = (search_query or "").strip()
+    if not q:
+        st.info("Type something in the search box above to begin.")
+    else:
+        ql = q.lower()
+
+        def _row_contains(df, query_lc, cols=None):
+            """Return df subset where any cell in `cols` (or all str cols) contains query."""
+            if df is None or df.empty:
+                return df
+            target_cols = cols if cols else df.columns
+            mask = pd.Series(False, index=df.index)
+            for c in target_cols:
+                if c not in df.columns:
+                    continue
+                col_str = df[c].astype(str).str.lower()
+                mask |= col_str.str.contains(query_lc, regex=False, na=False)
+            return df[mask]
+
+        scope = search_scope
+        results = []   # list of (label, dataframe, display_columns_renamed)
+
+        # ── Runs ──────────────────────────────────────────────
+        if scope in ("All sources", "Runs") and runs is not None:
+            run_cols = [c for c in ["run_date","run_id","grower","variety","batch_id",
+                                    "operator_machine","operator_quality","bins_run","retip",
+                                    "premium_rate","juice_rate","notes_run"] if c in runs.columns]
+            run_hit = _row_contains(runs, ql, run_cols)
+            if not run_hit.empty:
+                disp = run_hit[run_cols].copy()
+                if "run_date" in disp.columns:
+                    disp["run_date"] = pd.to_datetime(disp["run_date"]).dt.strftime("%Y-%m-%d")
+                disp = disp.rename(columns={
+                    "run_date":"Date","run_id":"Run ID","grower":"Grower","variety":"Variety",
+                    "batch_id":"Batch","operator_machine":"Op (Machine)","operator_quality":"Op (Quality)",
+                    "bins_run":"Bins","retip":"Retip","premium_rate":"Premium %",
+                    "juice_rate":"Juice %","notes_run":"Notes"
+                })
+                results.append(("Runs", disp.sort_values("Date", ascending=False)
+                                if "Date" in disp.columns else disp, len(run_hit)))
+
+        # ── Batches ───────────────────────────────────────────
+        if scope in ("All sources", "Batches") and batches is not None:
+            bcols = [c for c in ["batch_id","grower","variety","decfile_version",
+                                 "defect_1","defect_2","defect_3","leaf_present","premium",
+                                 "premium%","notes_batches"] if c in batches.columns]
+            b_hit = _row_contains(batches, ql, bcols)
+            if not b_hit.empty:
+                disp = b_hit[bcols].copy()
+                disp = disp.rename(columns={
+                    "batch_id":"Batch","grower":"Grower","variety":"Variety",
+                    "decfile_version":"Version","defect_1":"Defect 1","defect_2":"Defect 2",
+                    "defect_3":"Defect 3","leaf_present":"Leaf","premium":"Premium",
+                    "premium%":"Premium %","notes_batches":"Notes"
+                })
+                results.append(("Batches", disp, len(b_hit)))
+
+        # ── IQS Changes ───────────────────────────────────────
+        if scope in ("All sources", "IQS Changes") and changes is not None:
+            ccols = [c for c in ["run_id","variety","mode","check_class","action",
+                                 "boundary_before","boundary_after","sensitivity","accuracy",
+                                 "reason","change_time","notes_changes"] if c in changes.columns]
+            c_hit = _row_contains(changes, ql, ccols)
+            if not c_hit.empty:
+                disp = c_hit[ccols].copy()
+                if "change_time" in disp.columns:
+                    disp["change_time"] = pd.to_datetime(disp["change_time"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+                disp = disp.rename(columns={
+                    "run_id":"Run ID","variety":"Variety","mode":"Mode","check_class":"Class",
+                    "action":"Action","boundary_before":"Before","boundary_after":"After",
+                    "sensitivity":"Sens.","accuracy":"Acc.","reason":"Reason",
+                    "change_time":"When","notes_changes":"Notes"
+                })
+                results.append(("IQS Changes", disp, len(c_hit)))
+
+        # ── Downtime ──────────────────────────────────────────
+        if scope in ("All sources", "Downtime") and downtime is not None:
+            dcols = [c for c in ["run_date","run_id","downtime_start","downtime_end",
+                                 "duration_hours","downtime_area","downtime_reason"] if c in downtime.columns]
+            d_hit = _row_contains(downtime, ql, dcols)
+            if not d_hit.empty:
+                disp = d_hit[dcols].copy()
+                if "run_date" in disp.columns:
+                    disp["run_date"] = pd.to_datetime(disp["run_date"]).dt.strftime("%Y-%m-%d")
+                disp = disp.rename(columns={
+                    "run_date":"Date","run_id":"Run ID","downtime_start":"Start",
+                    "downtime_end":"End","duration_hours":"Hours","downtime_area":"Area",
+                    "downtime_reason":"Reason"
+                })
+                results.append(("Downtime", disp, len(d_hit)))
+
+        # ── Training ──────────────────────────────────────────
+        if scope in ("All sources", "Training") and dec_file is not None:
+            tcols = [c for c in ["training_source","date_submit","date_complete","variety",
+                                 "reference_dec","decfile_ver","decfile_type",
+                                 "defect_count","status","NOTES"] if c in dec_file.columns]
+            # Also search across the long-list of defects (defects_list)
+            base_hit = _row_contains(dec_file, ql, tcols)
+            extra_hit_idx = []
+            if "defects_list" in dec_file.columns:
+                for idx, items in dec_file["defects_list"].items():
+                    if items and any(ql in str(d).lower() for d in items):
+                        extra_hit_idx.append(idx)
+            t_hit = pd.concat([base_hit, dec_file.loc[extra_hit_idx]]).drop_duplicates() \
+                    if extra_hit_idx else base_hit
+            if not t_hit.empty:
+                disp = t_hit[tcols].copy()
+                for dc in ("date_submit","date_complete"):
+                    if dc in disp.columns:
+                        disp[dc] = pd.to_datetime(disp[dc]).dt.strftime("%Y-%m-%d")
+                disp = disp.rename(columns={
+                    "training_source":"Source","date_submit":"Submitted","date_complete":"Completed",
+                    "variety":"Variety","reference_dec":"Ref","decfile_ver":"Version",
+                    "decfile_type":"Type","defect_count":"# Defects","status":"Status",
+                    "NOTES":"Notes"
+                })
+                results.append(("Training", disp.sort_values("Submitted", ascending=False)
+                                if "Submitted" in disp.columns else disp, len(t_hit)))
+
+        # ── Render ────────────────────────────────────────────
+        total = sum(c for _, _, c in results)
+        if total == 0:
+            st.warning(f"No matches found for **{q}**.")
+        else:
+            # Summary KPI strip
+            cnts = {label: c for label, _, c in results}
+            cols_strip = st.columns(min(5, max(1, len(results) + 1)))
+            cols_strip[0].markdown(kpi_html("Total Matches", f"{total:,}",
+                                            f"across {len(results)} dataset(s)"),
+                                   unsafe_allow_html=True)
+            for i, (label, _, c) in enumerate(results, start=1):
+                if i < len(cols_strip):
+                    cols_strip[i].markdown(kpi_html(label, f"{c:,}"), unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            for label, df, c in results:
+                st.markdown(f'<div class="section-title">{label} — {c:,} match{"es" if c != 1 else ""}</div>',
+                            unsafe_allow_html=True)
+                st.dataframe(df, use_container_width=True, hide_index=True,
+                             height=min(420, 60 + 32 * min(len(df), 12)))
+                st.markdown("")  # spacer
