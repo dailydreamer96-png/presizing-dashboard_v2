@@ -121,8 +121,11 @@ st.markdown("""
     text-transform: uppercase;
   }
 
-  /* Style any buttons inside the nav panel area (toggle button) */
-  .nav-toggle-btn-row [data-testid="stButton"] button {
+  /* ── Toggle button (HIDE/SHOW FILTERS) ────────────────
+     We use type="primary" on the st.button() call, so we can target
+     it precisely with the primary-button testid. */
+  button[data-testid="stBaseButton-primary"],
+  button[kind="primary"] {
     background: var(--blue) !important;
     color: #ffffff !important;
     font-family: 'Inter', sans-serif !important;
@@ -136,11 +139,16 @@ st.markdown("""
     transition: all 0.15s ease !important;
     width: 100%;
   }
-  .nav-toggle-btn-row [data-testid="stButton"] button:hover {
+  button[data-testid="stBaseButton-primary"]:hover,
+  button[kind="primary"]:hover {
     background: var(--blue-dk) !important;
     transform: translateY(-1px) !important;
+    color: #ffffff !important;
   }
-  .nav-toggle-btn-row [data-testid="stButton"] button p {
+  button[data-testid="stBaseButton-primary"] p,
+  button[data-testid="stBaseButton-primary"] div,
+  button[kind="primary"] p,
+  button[kind="primary"] div {
     color: #ffffff !important;
     font-weight: 700 !important;
   }
@@ -532,7 +540,11 @@ PLOT_LAYOUT = dict(
     yaxis=dict(gridcolor="#d0d8e8", linecolor="#d0d8e8", tickfont=dict(size=11), tickcolor="#7a90b0"),
     margin=dict(l=20, r=20, t=44, b=20),
     hovermode="x unified",
-    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11, color="#2d3f5e")),
+    legend=dict(
+        bgcolor="rgba(0,0,0,0)",
+        font=dict(size=11, color="#2d3f5e"),
+        title=dict(text=""),  # never show "undefined" / column name as legend caption
+    ),
 )
 BLUE     = "#1E90FF"   # Dodger Blue — primary
 BLUE_DK  = "#1270cc"
@@ -566,7 +578,10 @@ def apply_plot_theme(fig, height=380):
         ht = getattr(tr, "hovertemplate", None)
         if ht and "<extra>" not in ht:
             tr.update(hovertemplate=ht + "<extra></extra>")
-    # Wipe stray 'undefined' chart-level title, axis titles, and legend title
+    # ALWAYS clear the legend title — plotly often defaults to the dataframe
+    # column name (e.g. "year") which renders as "undefined" on some setups.
+    fig.update_layout(legend_title_text="")
+    # Wipe stray 'undefined' chart-level title, axis titles
     def _is_undef(v):
         return v is None or str(v).strip().lower() in ("undefined", "none", "nan", "")
     if fig.layout.title and _is_undef(fig.layout.title.text):
@@ -575,8 +590,6 @@ def apply_plot_theme(fig, height=380):
         fig.update_xaxes(title=None)
     if fig.layout.yaxis and fig.layout.yaxis.title and _is_undef(fig.layout.yaxis.title.text):
         fig.update_yaxes(title=None)
-    if fig.layout.legend and fig.layout.legend.title and _is_undef(fig.layout.legend.title.text):
-        fig.update_layout(legend_title_text="")
     if fig.layout.coloraxis and fig.layout.coloraxis.colorbar and _is_undef(fig.layout.coloraxis.colorbar.title.text):
         fig.update_layout(coloraxis_colorbar_title_text="")
     return fig
@@ -838,7 +851,8 @@ with nav_col1:
 with nav_col2:
     st.markdown('<div class="nav-toggle-btn-row">', unsafe_allow_html=True)
     toggle_label = "✕  HIDE FILTERS" if st.session_state.show_filters else "☰  SHOW FILTERS"
-    if st.button(toggle_label, key="filters_toggle_btn", use_container_width=True):
+    if st.button(toggle_label, key="filters_toggle_btn",
+                 use_container_width=True, type="primary"):
         st.session_state.show_filters = not st.session_state.show_filters
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1980,56 +1994,72 @@ elif page.endswith("IQS"):
         if mode_order is not None and not mode_order.empty:
             st.caption(
                 "Reference list comes from **mode_order.csv** — every mode IQS is configured to detect for this variety. "
-                "Modes you haven't yet checked or adjusted for the current grower appear below, with classes collapsed per mode."
+                "Modes that have not yet been tested for the current selection appear below in their configured order. "
+                "Pick **All growers** to see modes never tested across *any* grower for the variety."
             )
         else:
             st.caption("Modes seen for this **variety** across other growers, but not yet checked or adjusted for the **current grower**.")
 
         next_modes_table = pd.DataFrame()
 
-        if selected_mode_variety != "All varieties" and selected_mode_grower != "All growers":
+        # Allow either: specific grower (modes not yet tested for THAT grower)
+        #               OR All growers (modes not yet tested for ANY grower in the variety)
+        if selected_mode_variety != "All varieties":
 
-            # Reference universe of modes for this variety:
-            #   primary  = mode_order.csv (authoritative — even if never checked yet)
-            #   fallback = modes seen historically across all growers in changes_raw
+            # ── Reference universe of modes for this variety ─────
+            #   primary  = mode_order.csv (authoritative — even if never tested)
+            #   fallback = modes seen historically in changes_raw across all growers
             ref_modes_set = set()
+            order_lookup = {}
             if mode_order is not None and "variety" in mode_order.columns and "mode" in mode_order.columns:
                 ref_for_var = mode_order[mode_order["variety"].astype(str) == selected_mode_variety]
                 ref_modes_set = set(ref_for_var["mode"].dropna().astype(str).tolist())
+                # Build display order from mode_order column
+                if "mode_order" in ref_for_var.columns:
+                    for _, r in ref_for_var.iterrows():
+                        if pd.notna(r.get("mode")) and pd.notna(r.get("mode_order")):
+                            order_lookup[str(r["mode"])] = int(r["mode_order"])
 
-            # Variety-wide history from changes_raw (across all growers) for boundary references + class info
+            # ── Variety-wide history (across all growers) ────────
             variety_mode_db = mode_df.copy()
             if "variety" in variety_mode_db.columns:
                 variety_mode_db = variety_mode_db[variety_mode_db["variety"].astype(str) == selected_mode_variety]
             if selected_version != "All versions" and "decfile_version" in variety_mode_db.columns:
                 variety_mode_db = variety_mode_db[variety_mode_db["decfile_version"].astype(str) == selected_version]
 
-            # If no mode_order list, fall back to historic modes
+            # Fallback to historic modes only if mode_order has nothing for this variety
             if not ref_modes_set and not variety_mode_db.empty and "mode" in variety_mode_db.columns:
                 ref_modes_set = set(variety_mode_db["mode"].dropna().astype(str).tolist())
 
-            # Modes the current grower HAS already touched — these get filtered out
-            grower_mode_db = variety_mode_db.copy()
-            if "grower" in grower_mode_db.columns:
-                grower_mode_db = grower_mode_db[grower_mode_db["grower"].astype(str) == selected_mode_grower]
-            checked_modes = set()
-            if not grower_mode_db.empty and "mode" in grower_mode_db.columns:
-                checked_modes = set(grower_mode_db["mode"].dropna().astype(str).tolist())
+            # ── Modes considered "tested" for current selection ─
+            if selected_mode_grower == "All growers":
+                # Tested = touched by ANY grower for this variety
+                tested_modes = set()
+                if not variety_mode_db.empty and "mode" in variety_mode_db.columns:
+                    tested_modes = set(variety_mode_db["mode"].dropna().astype(str).tolist())
+            else:
+                # Tested = touched by THIS specific grower
+                grower_mode_db = variety_mode_db.copy()
+                if "grower" in grower_mode_db.columns:
+                    grower_mode_db = grower_mode_db[grower_mode_db["grower"].astype(str) == selected_mode_grower]
+                tested_modes = set()
+                if not grower_mode_db.empty and "mode" in grower_mode_db.columns:
+                    tested_modes = set(grower_mode_db["mode"].dropna().astype(str).tolist())
 
-            # Build one row per mode (classes collapsed)
-            order_lookup = {}
-            if mode_order is not None and "variety" in mode_order.columns and "mode_order" in mode_order.columns:
-                for _, r in mode_order[mode_order["variety"].astype(str) == selected_mode_variety].iterrows():
-                    if pd.notna(r.get("mode")) and pd.notna(r.get("mode_order")):
-                        order_lookup[str(r["mode"])] = int(r["mode_order"])
-
+            # ── Build one row per unchecked mode ─────────────────
             rows = []
+            # Stable order: use mode_order int if available, else max+1+alpha so unknowns sink to bottom alphabetically
+            max_order = max(order_lookup.values()) if order_lookup else 0
             for mode_name in ref_modes_set:
-                if mode_name in checked_modes:
-                    continue  # already checked for this grower
+                if mode_name in tested_modes:
+                    continue  # already tested
 
                 # Look up classes + reference boundaries seen across all growers for this mode
-                mode_hist = variety_mode_db[variety_mode_db["mode"].astype(str) == mode_name] if "mode" in variety_mode_db.columns else pd.DataFrame()
+                mode_hist = (
+                    variety_mode_db[variety_mode_db["mode"].astype(str) == mode_name]
+                    if "mode" in variety_mode_db.columns
+                    else pd.DataFrame()
+                )
                 if not mode_hist.empty and "check_class" in mode_hist.columns:
                     classes_seen = sorted({str(c) for c in mode_hist["check_class"].dropna().tolist() if str(c).strip()})
                     classes_text = ", ".join(classes_seen) if classes_seen else "—"
@@ -2044,9 +2074,21 @@ elif page.endswith("IQS"):
                 if not ref_boundaries:
                     ref_boundaries = "—"
 
+                # _sort_key is used internally only — never displayed
+                # Modes in mode_order.csv keep their listed position; ones NOT in mode_order
+                # sink below them and are alphabetised so the layout stays stable.
+                if mode_name in order_lookup:
+                    sort_key = order_lookup[mode_name]
+                    pos_label = order_lookup[mode_name]   # actual order number
+                else:
+                    sort_key = max_order + 1
+                    pos_label = "—"   # not in mode_order — show a dash, never 9999
+
                 rows.append({
                     "Check": False,
-                    "Order": order_lookup.get(mode_name, 9999),
+                    "_sort_key": sort_key,
+                    "_sort_alpha": mode_name,   # secondary key for unknowns
+                    "#": pos_label,
                     "Mode": mode_name,
                     "Classes Covered": classes_text,
                     "Reference Boundaries": ref_boundaries,
@@ -2056,40 +2098,55 @@ elif page.endswith("IQS"):
             if rows:
                 next_modes_table = (
                     pd.DataFrame(rows)
-                    .sort_values("Order", ascending=True)
+                    .sort_values(["_sort_key", "_sort_alpha"], ascending=[True, True])
+                    .drop(columns=["_sort_key", "_sort_alpha"])
                     .reset_index(drop=True)
                 )
 
-        if selected_mode_variety == "All varieties" or selected_mode_grower == "All growers":
-            st.info("Select a specific variety **and** grower in the sidebar to see unchecked modes.")
+        if selected_mode_variety == "All varieties":
+            st.info("Select a specific variety in the sidebar to see unchecked modes. Pick **All growers** alongside to see modes never tested for the variety across the whole site.")
         elif next_modes_table.empty:
-            if mode_order is not None and selected_mode_variety not in (mode_order["variety"].astype(str).unique() if "variety" in mode_order.columns else []):
+            in_mode_order = (
+                mode_order is not None
+                and "variety" in mode_order.columns
+                and selected_mode_variety in mode_order["variety"].astype(str).unique()
+            )
+            if not in_mode_order:
                 st.info(
                     f"**{selected_mode_variety}** isn't in **mode_order.csv** yet. "
-                    "Falling back to historical data — add this variety's modes to mode_order.csv to enable the authoritative checklist."
+                    "Add this variety's modes to mode_order.csv to enable the authoritative checklist."
                 )
             else:
+                scope_label = ("any grower" if selected_mode_grower == "All growers"
+                               else f"**{selected_mode_grower}**")
                 st.success(
-                    f"All reference modes for **{selected_mode_variety}** have already been checked or adjusted "
-                    f"for **{selected_mode_grower}**."
+                    f"All reference modes for **{selected_mode_variety}** have already been tested for {scope_label}."
                 )
         else:
+            n_unchecked = len(next_modes_table)
+            scope_label = ("across all growers" if selected_mode_grower == "All growers"
+                           else f"for **{selected_mode_grower}**")
+            st.markdown(
+                f"<div style='margin-bottom:8px;color:var(--ink-mid);font-size:0.9rem;'>"
+                f"<b>{n_unchecked}</b> mode{'s' if n_unchecked != 1 else ''} not yet tested {scope_label}."
+                f"</div>", unsafe_allow_html=True
+            )
             st.data_editor(
                 next_modes_table, use_container_width=True, height=320, hide_index=True,
                 column_config={
                     "Check": st.column_config.CheckboxColumn("✓", width="small"),
-                    "Order": st.column_config.NumberColumn("#", width="small",
-                        help="Position in mode_order.csv — operator's recommended order"),
+                    "#": st.column_config.TextColumn("#", width="small",
+                        help="Position in mode_order.csv — recommended testing order. '—' means the mode isn't yet listed in mode_order.csv."),
                     "Mode": st.column_config.TextColumn("Mode", width="medium"),
                     "Classes Covered": st.column_config.TextColumn("Classes Covered", width="medium",
-                        help="Check classes seen historically across all growers for this variety"),
+                        help="Check classes seen historically across all growers for this variety. '—' if never tested anywhere."),
                     "Reference Boundaries": st.column_config.TextColumn("Reference Boundaries", width="large",
-                        help="After-boundaries seen across all growers for the same variety"),
+                        help="After-boundaries seen across all growers for the same variety."),
                     "History Count": st.column_config.NumberColumn("Hist.", width="small",
-                        help="Historical change records for this mode (across all growers)"),
+                        help="Historical change records for this mode across all growers."),
                 },
-                column_order=["Check","Order","Mode","Classes Covered","Reference Boundaries","History Count"],
-                disabled=["Order","Mode","Classes Covered","Reference Boundaries","History Count"],
+                column_order=["Check","#","Mode","Classes Covered","Reference Boundaries","History Count"],
+                disabled=["#","Mode","Classes Covered","Reference Boundaries","History Count"],
                 key="unchecked_mode_editor"
             )
 
