@@ -535,7 +535,9 @@ PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="#f4f7fb",
     font=dict(family="Inter, sans-serif", color="#4e6080", size=12),
-    title_font=dict(family="Inter, sans-serif", color="#0f1d35", size=14),
+    # Explicit title with empty text — prevents plotly from emitting 'undefined'
+    # as a title placeholder when only `title_font=...` is provided.
+    title=dict(text="", font=dict(family="Inter, sans-serif", color="#0f1d35", size=14)),
     xaxis=dict(gridcolor="#d0d8e8", linecolor="#d0d8e8", tickfont=dict(size=11), tickcolor="#7a90b0"),
     yaxis=dict(gridcolor="#d0d8e8", linecolor="#d0d8e8", tickfont=dict(size=11), tickcolor="#7a90b0"),
     margin=dict(l=20, r=20, t=44, b=20),
@@ -569,29 +571,42 @@ def load_csv(filename):
 
 def apply_plot_theme(fig, height=380):
     fig.update_layout(**PLOT_LAYOUT, height=height)
-    # Universal cleanup: any unnamed/None/'undefined' traces have their name blanked
-    # and gain a clean hover (no second box with the literal trace name).
+
+    # ALWAYS clear top-level chart title and legend title — these are the two
+    # most common sources of stray "undefined" labels (plotly.py auto-creates
+    # a title placeholder when only title_font is set, which renders as the
+    # literal string 'undefined' on some renderers).
+    fig.update_layout(title_text="", legend_title_text="")
+
+    # Universal trace cleanup: any unnamed/None/'undefined' traces have their
+    # name blanked, hover gets <extra></extra> appended (kills second tooltip box).
     for tr in fig.data:
         if (not getattr(tr, "name", None)) or str(tr.name).lower() in ("undefined", "none", "nan", "trace 0"):
             tr.update(name="")
-        # Append <extra></extra> if the hovertemplate doesn't already suppress the secondary box
         ht = getattr(tr, "hovertemplate", None)
         if ht and "<extra>" not in ht:
             tr.update(hovertemplate=ht + "<extra></extra>")
-    # ALWAYS clear the legend title — plotly often defaults to the dataframe
-    # column name (e.g. "year") which renders as "undefined" on some setups.
-    fig.update_layout(legend_title_text="")
-    # Wipe stray 'undefined' chart-level title, axis titles
-    def _is_undef(v):
-        return v is None or str(v).strip().lower() in ("undefined", "none", "nan", "")
-    if fig.layout.title and _is_undef(fig.layout.title.text):
-        fig.update_layout(title=None)
-    if fig.layout.xaxis and fig.layout.xaxis.title and _is_undef(fig.layout.xaxis.title.text):
-        fig.update_xaxes(title=None)
-    if fig.layout.yaxis and fig.layout.yaxis.title and _is_undef(fig.layout.yaxis.title.text):
-        fig.update_yaxes(title=None)
-    if fig.layout.coloraxis and fig.layout.coloraxis.colorbar and _is_undef(fig.layout.coloraxis.colorbar.title.text):
+
+    # Wipe stray 'undefined' axis titles (but NOT legitimate ones — only clear
+    # when the title text literally says 'undefined' or 'None'/'nan').
+    def _is_explicit_undef(v):
+        return str(v).strip().lower() in ("undefined", "none", "nan")
+    if (fig.layout.xaxis and fig.layout.xaxis.title
+            and fig.layout.xaxis.title.text
+            and _is_explicit_undef(fig.layout.xaxis.title.text)):
+        fig.update_xaxes(title_text="")
+    if (fig.layout.yaxis and fig.layout.yaxis.title
+            and fig.layout.yaxis.title.text
+            and _is_explicit_undef(fig.layout.yaxis.title.text)):
+        fig.update_yaxes(title_text="")
+
+    # Color-bar caption
+    if (fig.layout.coloraxis and fig.layout.coloraxis.colorbar
+            and fig.layout.coloraxis.colorbar.title
+            and fig.layout.coloraxis.colorbar.title.text
+            and _is_explicit_undef(fig.layout.coloraxis.colorbar.title.text)):
         fig.update_layout(coloraxis_colorbar_title_text="")
+
     return fig
 
 def pct_delta(current, previous):
@@ -1217,14 +1232,19 @@ if page.endswith("Summary"):
         st.markdown('<div class="section-title">Throughput Trend</div>', unsafe_allow_html=True)
 
         if period_choice == "Yearly":
-            fig = px.bar(chart_df, x="year", y="bins_run", color_discrete_sequence=[AMBER])
+            fig = px.bar(chart_df, x="year", y="bins_run",
+                         color_discrete_sequence=[AMBER],
+                         labels={"year": "Year", "bins_run": "Total Bins"})
             fig.update_xaxes(type="category")
         elif period_choice == "Monthly":
             fig = px.line(chart_df, x="month_name", y="bins_run", color="year",
                 markers=True, color_discrete_sequence=COLOR_SEQ,
+                labels={"month_name": "Month", "bins_run": "Total Bins", "year": "Year"},
                 category_orders={"month_name": ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]})
         else:
-            fig = px.bar(chart_df, x="week_label", y="bins_run", color_discrete_sequence=[AMBER])
+            fig = px.bar(chart_df, x="week_label", y="bins_run",
+                         color_discrete_sequence=[AMBER],
+                         labels={"week_label": "Week Starting", "bins_run": "Total Bins"})
 
         fig.update_traces(hovertemplate="%{y:,.0f} bins<extra></extra>", name="")
         fig.update_layout(showlegend=(period_choice == "Monthly"))
