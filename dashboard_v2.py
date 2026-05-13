@@ -1962,139 +1962,6 @@ elif page.endswith("IQS"):
 
         st.markdown("---")
 
-        # ════════════════════════════════════════════════════════
-        # CLEAN & LEAF FRUIT DETECTION REFERENCE
-        # ════════════════════════════════════════════════════════
-        st.markdown('<div class="section-title">Clean & Leaf Fruit Detection Reference</div>', unsafe_allow_html=True)
-        st.caption(
-            "When clean fruits or leaf fruits were tested through the line, these are the **boundary** values "
-            "at which each mode registered the fruit, and how many fruits were detected (**amounts**). "
-            "Use this as a reference when tuning a mode — if the boundary is too sensitive, clean fruits will get flagged. "
-            "Source: **mode_order.csv**. Blank = no calibration recorded yet for that mode."
-        )
-
-        if mode_order is None or mode_order.empty:
-            st.info("mode_order.csv not loaded — clean/leaf reference unavailable.")
-        elif selected_mode_variety == "All varieties":
-            st.info("Select a specific **variety** in the filter to see clean/leaf detection values for its modes.")
-        else:
-            cl_ref = mode_order[mode_order["variety"].astype(str) == selected_mode_variety].copy()
-
-            if cl_ref.empty:
-                st.info(
-                    f"**{selected_mode_variety}** isn't in mode_order.csv yet. "
-                    "Add this variety to enable clean/leaf reference."
-                )
-            else:
-                cl_ref = cl_ref.sort_values("mode_order")
-
-                # Headline KPIs
-                n_modes_total = len(cl_ref)
-                n_clean_tested = cl_ref["clean_boundary"].notna().sum() if "clean_boundary" in cl_ref.columns else 0
-                n_leaf_tested  = cl_ref["leaf_boundary"].notna().sum() if "leaf_boundary" in cl_ref.columns else 0
-
-                cl_k1, cl_k2, cl_k3 = st.columns(3)
-                cl_k1.markdown(kpi_html(
-                    "Modes in Reference", f"{n_modes_total}",
-                    f"for {selected_mode_variety.replace('_', ' ').title()}"
-                ), unsafe_allow_html=True)
-                cl_k2.markdown(kpi_html(
-                    "Clean-Fruit Tested", f"{n_clean_tested} / {n_modes_total}",
-                    f"{(n_clean_tested / n_modes_total * 100):.0f}% coverage" if n_modes_total else ""
-                ), unsafe_allow_html=True)
-                cl_k3.markdown(kpi_html(
-                    "Leaf-Fruit Tested", f"{n_leaf_tested} / {n_modes_total}",
-                    f"{(n_leaf_tested / n_modes_total * 100):.0f}% coverage" if n_modes_total else ""
-                ), unsafe_allow_html=True)
-
-                st.markdown("")
-
-                # Sub-tabs: by mode (full table) | clean only | leaf only
-                cl_view = st.radio(
-                    "View",
-                    ["📋  All Modes", "🟢  Clean Fruit Only", "🍃  Leaf Fruit Only"],
-                    horizontal=True,
-                    key="cl_view"
-                )
-
-                def _fmt_boundary(v):
-                    if pd.isna(v): return "—"
-                    iv = int(v) if float(v).is_integer() else v
-                    return f"{iv:,}"
-
-                def _fmt_amount(v):
-                    if pd.isna(v): return "—"
-                    return str(v)
-
-                # Build display dataframe
-                cl_disp = pd.DataFrame({
-                    "#": cl_ref["mode_order"].astype("Int64") if "mode_order" in cl_ref.columns else range(1, len(cl_ref)+1),
-                    "Mode": cl_ref["mode"].astype(str),
-                    "Clean Boundary": cl_ref["clean_boundary"].apply(_fmt_boundary)
-                                       if "clean_boundary" in cl_ref.columns else "—",
-                    "Clean Amounts": cl_ref["clean_amounts"].apply(_fmt_amount)
-                                       if "clean_amounts" in cl_ref.columns else "—",
-                    "Leaf Boundary": cl_ref["leaf_boundary"].apply(_fmt_boundary)
-                                       if "leaf_boundary" in cl_ref.columns else "—",
-                    "Leaf Amounts": cl_ref["leaf_amounts"].apply(_fmt_amount)
-                                       if "leaf_amounts" in cl_ref.columns else "—",
-                })
-
-                if cl_view == "🟢  Clean Fruit Only":
-                    cl_disp = cl_disp[cl_disp["Clean Boundary"] != "—"]
-                    show_cols = ["#","Mode","Clean Boundary","Clean Amounts"]
-                elif cl_view == "🍃  Leaf Fruit Only":
-                    cl_disp = cl_disp[cl_disp["Leaf Boundary"] != "—"]
-                    show_cols = ["#","Mode","Leaf Boundary","Leaf Amounts"]
-                else:
-                    show_cols = ["#","Mode","Clean Boundary","Clean Amounts","Leaf Boundary","Leaf Amounts"]
-
-                if cl_disp.empty:
-                    st.info("No data recorded for this view.")
-                else:
-                    st.dataframe(
-                        cl_disp[show_cols],
-                        use_container_width=True,
-                        hide_index=True,
-                        height=min(500, 60 + 36 * min(len(cl_disp), 14)),
-                    )
-
-                # Bar chart: top modes by amounts category (where data exists)
-                cl_chart_df = cl_ref.dropna(subset=["clean_boundary","leaf_boundary"], how="all").copy()
-                if not cl_chart_df.empty:
-                    chart_rows = []
-                    for _, r in cl_chart_df.iterrows():
-                        mode_name = str(r["mode"])
-                        if pd.notna(r.get("clean_boundary")):
-                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Clean",
-                                               "Boundary": float(r["clean_boundary"]),
-                                               "Amount": r.get("clean_amounts") or "—"})
-                        if pd.notna(r.get("leaf_boundary")):
-                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Leaf",
-                                               "Boundary": float(r["leaf_boundary"]),
-                                               "Amount": r.get("leaf_amounts") or "—"})
-                    chart_df_cl = pd.DataFrame(chart_rows)
-                    if not chart_df_cl.empty:
-                        st.markdown("")
-                        st.markdown(
-                            '<div style="font-size:0.85rem;font-weight:600;color:var(--ink);margin:8px 0;">'
-                            'Boundary values by mode (clean vs leaf)</div>',
-                            unsafe_allow_html=True
-                        )
-                        fig_cl = px.bar(
-                            chart_df_cl.sort_values("Boundary", ascending=True),
-                            x="Boundary", y="Mode", color="Fruit Type",
-                            orientation="h", barmode="group",
-                            color_discrete_map={"Clean": EMERALD, "Leaf": AMBER},
-                            labels={"Boundary": "Boundary value", "Mode": "Mode"},
-                            hover_data={"Amount": True},
-                        )
-                        fig_cl.update_traces(hovertemplate="%{y}<br>%{fullData.name} boundary: %{x}<br>Amounts: %{customdata[0]}<extra></extra>")
-                        apply_plot_theme(fig_cl, height=max(360, 26 * len(chart_df_cl["Mode"].unique())))
-                        st.plotly_chart(fig_cl, use_container_width=True)
-
-        st.markdown("---")
-
         # ── Defect Investigation Workflow — bidirectional ─────────
         st.markdown('<div class="section-title">Defect Investigation Workflow</div>', unsafe_allow_html=True)
 
@@ -2421,6 +2288,259 @@ elif page.endswith("IQS"):
                 disabled=["#","Mode","Classes Covered","Reference Boundaries","History Count"],
                 key="unchecked_mode_editor"
             )
+
+        st.markdown("---")
+
+        # ════════════════════════════════════════════════════════
+        # CLEAN & LEAF FRUIT DETECTION REFERENCE  (bottom of IQS page)
+        # ════════════════════════════════════════════════════════
+        st.markdown('<div class="section-title">Clean & Leaf Fruit Detection Reference</div>', unsafe_allow_html=True)
+        st.caption(
+            "These values were captured when clean (defect-free) and leaf-on fruits were tested through the line. "
+            "Each **boundary** is the **highest value that still lets the mode trigger** on a clean or leaf fruit. "
+            "**If the operator's current boundary is set _at or below_ this value, real clean/leaf fruits may falsely register as defects** — "
+            "i.e. perfectly good fruit gets rejected. Use this section as a safety floor when tuning. "
+            "Source: **mode_order.csv**."
+        )
+
+        if mode_order is None or mode_order.empty:
+            st.info("mode_order.csv not loaded — clean/leaf reference unavailable.")
+        elif selected_mode_variety == "All varieties":
+            st.info("Select a specific **variety** in the filter to see clean/leaf detection values for its modes.")
+        else:
+            cl_ref = mode_order[mode_order["variety"].astype(str) == selected_mode_variety].copy()
+
+            if cl_ref.empty:
+                st.info(
+                    f"**{selected_mode_variety}** isn't in mode_order.csv yet. "
+                    "Add this variety to enable clean/leaf reference."
+                )
+            else:
+                cl_ref = cl_ref.sort_values("mode_order")
+
+                # ── Compute current adjusted boundaries per mode from variety_pool
+                #     (same variety, all growers — broader reference pool).
+                #     Use the most recent boundary_after per mode.
+                current_boundary_by_mode = {}
+                if (variety_pool is not None and not variety_pool.empty
+                        and "mode" in variety_pool.columns
+                        and "boundary_after" in variety_pool.columns):
+                    adj_only = variety_pool.copy()
+                    if "action" in adj_only.columns:
+                        adj_only = adj_only[adj_only["action"].astype(str).str.lower().str.startswith("a")]
+                    if "change_time" in adj_only.columns:
+                        adj_only = adj_only.sort_values("change_time", ascending=False)
+                    for mode_name, grp in adj_only.groupby("mode"):
+                        latest_b = grp["boundary_after"].dropna()
+                        if not latest_b.empty:
+                            current_boundary_by_mode[str(mode_name)] = float(latest_b.iloc[0])
+
+                # ── Build per-mode rows with alert flags
+                def _fmt_boundary(v):
+                    if pd.isna(v): return "—"
+                    iv = int(v) if float(v).is_integer() else v
+                    return f"{iv:,}"
+                def _fmt_amount(v):
+                    if pd.isna(v): return "—"
+                    return str(v)
+
+                clean_alerts = []   # list of dicts for at-risk modes (clean)
+                leaf_alerts  = []   # list of dicts for at-risk modes (leaf)
+                rows_for_disp = []
+
+                for _, r in cl_ref.iterrows():
+                    mode_name = str(r["mode"])
+                    clean_b = r.get("clean_boundary")
+                    leaf_b  = r.get("leaf_boundary")
+                    cur_b   = current_boundary_by_mode.get(mode_name)
+
+                    # Alert logic: if current_boundary <= safety_floor, RISK
+                    clean_status = "—"
+                    leaf_status  = "—"
+                    if pd.notna(clean_b) and cur_b is not None:
+                        if cur_b <= clean_b:
+                            clean_status = "⚠️ AT RISK"
+                            clean_alerts.append({
+                                "Mode": mode_name,
+                                "Safety Floor (Clean)": _fmt_boundary(clean_b),
+                                "Current Boundary": _fmt_boundary(cur_b),
+                                "Margin": _fmt_boundary(cur_b - clean_b),
+                                "Clean Amounts Tested": _fmt_amount(r.get("clean_amounts")),
+                            })
+                        else:
+                            clean_status = "✅ Safe"
+                    if pd.notna(leaf_b) and cur_b is not None:
+                        if cur_b <= leaf_b:
+                            leaf_status = "⚠️ AT RISK"
+                            leaf_alerts.append({
+                                "Mode": mode_name,
+                                "Safety Floor (Leaf)": _fmt_boundary(leaf_b),
+                                "Current Boundary": _fmt_boundary(cur_b),
+                                "Margin": _fmt_boundary(cur_b - leaf_b),
+                                "Leaf Amounts Tested": _fmt_amount(r.get("leaf_amounts")),
+                            })
+                        else:
+                            leaf_status = "✅ Safe"
+
+                    rows_for_disp.append({
+                        "#": int(r["mode_order"]) if pd.notna(r.get("mode_order")) else None,
+                        "Mode": mode_name,
+                        "Clean Boundary": _fmt_boundary(clean_b),
+                        "Clean Amounts": _fmt_amount(r.get("clean_amounts")),
+                        "Clean Status": clean_status,
+                        "Leaf Boundary": _fmt_boundary(leaf_b),
+                        "Leaf Amounts": _fmt_amount(r.get("leaf_amounts")),
+                        "Leaf Status": leaf_status,
+                        "Current Boundary": _fmt_boundary(cur_b) if cur_b is not None else "—",
+                    })
+
+                # Headline KPIs
+                n_modes_total = len(cl_ref)
+                n_clean_tested = cl_ref["clean_boundary"].notna().sum() if "clean_boundary" in cl_ref.columns else 0
+                n_leaf_tested  = cl_ref["leaf_boundary"].notna().sum() if "leaf_boundary" in cl_ref.columns else 0
+                n_clean_at_risk = len(clean_alerts)
+                n_leaf_at_risk  = len(leaf_alerts)
+
+                cl_k1, cl_k2, cl_k3, cl_k4 = st.columns(4)
+                cl_k1.markdown(kpi_html(
+                    "Modes in Reference", f"{n_modes_total}",
+                    f"for {selected_mode_variety.replace('_', ' ').title()}"
+                ), unsafe_allow_html=True)
+                cl_k2.markdown(kpi_html(
+                    "Tested Coverage",
+                    f"{n_clean_tested}C / {n_leaf_tested}L",
+                    f"of {n_modes_total} modes have clean/leaf data"
+                ), unsafe_allow_html=True)
+                cl_k3.markdown(kpi_html(
+                    "Clean-Fruit Alerts",
+                    f"{n_clean_at_risk}",
+                    "current boundary ≤ safety floor" if n_clean_at_risk else "all safe",
+                    "down" if n_clean_at_risk else "up"
+                ), unsafe_allow_html=True)
+                cl_k4.markdown(kpi_html(
+                    "Leaf-Fruit Alerts",
+                    f"{n_leaf_at_risk}",
+                    "current boundary ≤ safety floor" if n_leaf_at_risk else "all safe",
+                    "down" if n_leaf_at_risk else "up"
+                ), unsafe_allow_html=True)
+
+                # ── Alert tables (only if there are any) ────────
+                if clean_alerts or leaf_alerts:
+                    st.markdown("")
+                    al_l, al_r = st.columns(2)
+
+                    with al_l:
+                        if clean_alerts:
+                            n = len(clean_alerts)
+                            st.markdown(
+                                f'<div class="alert-card">🟢⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary at-or-below the clean-fruit safety floor — clean fruit may be misread as defective.</div>',
+                                unsafe_allow_html=True
+                            )
+                            st.dataframe(pd.DataFrame(clean_alerts),
+                                         use_container_width=True, hide_index=True,
+                                         height=min(260, 50 + 38 * min(n, 5)))
+                        else:
+                            st.markdown(
+                                '<div class="good-card">🟢 All clean-fruit safety floors are respected by the current boundaries.</div>',
+                                unsafe_allow_html=True
+                            )
+
+                    with al_r:
+                        if leaf_alerts:
+                            n = len(leaf_alerts)
+                            st.markdown(
+                                f'<div class="alert-card">🍃⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary at-or-below the leaf-fruit safety floor — leaf-on fruit may be misread as defective.</div>',
+                                unsafe_allow_html=True
+                            )
+                            st.dataframe(pd.DataFrame(leaf_alerts),
+                                         use_container_width=True, hide_index=True,
+                                         height=min(260, 50 + 38 * min(n, 5)))
+                        else:
+                            st.markdown(
+                                '<div class="good-card">🍃 All leaf-fruit safety floors are respected by the current boundaries.</div>',
+                                unsafe_allow_html=True
+                            )
+
+                # ── Full reference table with view selector ─────
+                st.markdown("")
+                cl_view = st.radio(
+                    "View",
+                    ["📋  All Modes", "🟢  Clean Fruit Only", "🍃  Leaf Fruit Only", "⚠️  At-Risk Only"],
+                    horizontal=True,
+                    key="cl_view"
+                )
+
+                cl_disp = pd.DataFrame(rows_for_disp)
+
+                if cl_view == "🟢  Clean Fruit Only":
+                    cl_disp = cl_disp[cl_disp["Clean Boundary"] != "—"]
+                    show_cols = ["#","Mode","Clean Boundary","Clean Amounts","Current Boundary","Clean Status"]
+                elif cl_view == "🍃  Leaf Fruit Only":
+                    cl_disp = cl_disp[cl_disp["Leaf Boundary"] != "—"]
+                    show_cols = ["#","Mode","Leaf Boundary","Leaf Amounts","Current Boundary","Leaf Status"]
+                elif cl_view == "⚠️  At-Risk Only":
+                    cl_disp = cl_disp[(cl_disp["Clean Status"] == "⚠️ AT RISK") |
+                                      (cl_disp["Leaf Status"] == "⚠️ AT RISK")]
+                    show_cols = ["#","Mode","Current Boundary",
+                                 "Clean Boundary","Clean Status",
+                                 "Leaf Boundary","Leaf Status"]
+                else:
+                    show_cols = ["#","Mode","Current Boundary",
+                                 "Clean Boundary","Clean Amounts","Clean Status",
+                                 "Leaf Boundary","Leaf Amounts","Leaf Status"]
+
+                if cl_disp.empty:
+                    st.info("No data recorded for this view.")
+                else:
+                    st.dataframe(
+                        cl_disp[show_cols],
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(540, 60 + 36 * min(len(cl_disp), 14)),
+                    )
+
+                # ── Boundary comparison chart with safety-floor line ─
+                cl_chart_df = cl_ref.dropna(subset=["clean_boundary","leaf_boundary"], how="all").copy()
+                if not cl_chart_df.empty:
+                    chart_rows = []
+                    for _, r in cl_chart_df.iterrows():
+                        mode_name = str(r["mode"])
+                        if pd.notna(r.get("clean_boundary")):
+                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Clean (safety floor)",
+                                               "Boundary": float(r["clean_boundary"]),
+                                               "Amount": r.get("clean_amounts") or "—"})
+                        if pd.notna(r.get("leaf_boundary")):
+                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Leaf (safety floor)",
+                                               "Boundary": float(r["leaf_boundary"]),
+                                               "Amount": r.get("leaf_amounts") or "—"})
+                        cur_b = current_boundary_by_mode.get(mode_name)
+                        if cur_b is not None:
+                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Current setting",
+                                               "Boundary": float(cur_b),
+                                               "Amount": "—"})
+                    chart_df_cl = pd.DataFrame(chart_rows)
+                    if not chart_df_cl.empty:
+                        st.markdown("")
+                        st.markdown(
+                            '<div style="font-size:0.85rem;font-weight:600;color:var(--ink);margin:8px 0;">'
+                            'Safety floors vs current settings — bars to the left of either floor are at-risk</div>',
+                            unsafe_allow_html=True
+                        )
+                        fig_cl = px.bar(
+                            chart_df_cl,
+                            x="Boundary", y="Mode", color="Fruit Type",
+                            orientation="h", barmode="group",
+                            color_discrete_map={
+                                "Clean (safety floor)": EMERALD,
+                                "Leaf (safety floor)":  AMBER,
+                                "Current setting":      BLUE,
+                            },
+                            labels={"Boundary": "Boundary value", "Mode": "Mode"},
+                            hover_data={"Amount": True},
+                        )
+                        fig_cl.update_traces(hovertemplate="%{y}<br>%{fullData.name}: %{x}<br>Amounts: %{customdata[0]}<extra></extra>")
+                        apply_plot_theme(fig_cl, height=max(360, 30 * len(chart_df_cl["Mode"].unique())))
+                        st.plotly_chart(fig_cl, use_container_width=True)
 
 # ═══════════════════════════════════════════════════════════════
 # OPERATORS PAGE
@@ -3076,24 +3196,32 @@ elif page.endswith("Search"):
 
             run_hit = pd.concat([direct_hit, linked_hit]).drop_duplicates()
             if not run_hit.empty:
-                # Enrich each run row with the defects of its batch
+                # Enrich each run row with the defects of its batch.
+                # Use a dict lookup keyed by batch_id (safer than merge —
+                # merge can multiply rows if batches has duplicate batch_ids).
                 run_hit = run_hit.copy()
                 if batches is not None and "batch_id" in batches.columns:
                     defect_cols = [c for c in ["defect_1","defect_2","defect_3"] if c in batches.columns]
                     if defect_cols:
-                        b_lookup = batches[["batch_id"] + defect_cols].copy()
-                        b_lookup["batch_id"] = b_lookup["batch_id"].astype(str)
-                        run_hit["batch_id_str"] = run_hit["batch_id"].astype(str)
-                        merged = run_hit.merge(b_lookup, left_on="batch_id_str", right_on="batch_id",
-                                                how="left", suffixes=("", "_b"))
-                        def _combine_defects(row):
+                        # Build {batch_id_str: "defect_1, defect_2, defect_3"} taking the first record per id
+                        b_lookup = batches[["batch_id"] + defect_cols].drop_duplicates("batch_id", keep="first").copy()
+                        b_lookup["batch_id_str"] = b_lookup["batch_id"].astype(str)
+
+                        def _row_defects(r):
                             vals = []
                             for c in defect_cols:
-                                v = row.get(c + "_b") if (c + "_b") in row.index else row.get(c)
+                                v = r.get(c)
                                 if pd.notna(v) and str(v).strip():
                                     vals.append(str(v).strip())
                             return ", ".join(vals) if vals else ""
-                        run_hit["Linked Defects"] = merged.apply(_combine_defects, axis=1).values
+
+                        defect_map = {
+                            r["batch_id_str"]: _row_defects(r)
+                            for _, r in b_lookup.iterrows()
+                        }
+                        run_hit["Linked Defects"] = (
+                            run_hit["batch_id"].astype(str).map(defect_map).fillna("")
+                        )
 
                 show_run_cols = run_cols + (["Linked Defects"] if "Linked Defects" in run_hit.columns else [])
                 disp = run_hit[show_run_cols].copy()
