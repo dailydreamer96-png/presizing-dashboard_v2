@@ -2718,6 +2718,231 @@ elif page.endswith("Operators"):
                                            yaxis=dict(tickmode='linear', dtick=1))
                     st.plotly_chart(fig_vmix, use_container_width=True)
 
+        # ════════════════════════════════════════════════════════
+        # VARIETY CHANGEOVER TIME — machine-operator focus
+        # ════════════════════════════════════════════════════════
+        if "start_dt" in ops_df.columns and "end_dt" in ops_df.columns and "variety" in ops_df.columns:
+            st.markdown("---")
+            st.markdown('<div class="section-title">Variety Changeover Time</div>', unsafe_allow_html=True)
+            st.caption(
+                "When the line switches from one variety to another **on the same day**, the gap between the end of the previous run "
+                "and the start of the next is the **changeover** — time spent cleaning down and reconfiguring for the new batch. "
+                "This is largely controlled by the **machine operator**. "
+                "Shorter changeovers = quicker line, but very short ones may signal corners cut on cleaning."
+            )
+
+            changeovers = []
+            co_df = ops_df.dropna(subset=["variety","start_dt","end_dt"]).copy()
+            # Group by calendar day (use run_date, not start_dt, in case a run crosses midnight)
+            for day, g in co_df.groupby(co_df["run_date"].dt.normalize()):
+                g = g.sort_values("start_dt").reset_index(drop=True)
+                for i in range(len(g) - 1):
+                    cur, nxt = g.iloc[i], g.iloc[i + 1]
+                    if str(cur["variety"]) == str(nxt["variety"]):
+                        continue  # same variety — not a changeover
+                    gap_min = (nxt["start_dt"] - cur["end_dt"]).total_seconds() / 60.0
+                    if pd.isna(gap_min) or gap_min < 0:
+                        continue  # bad data
+                    changeovers.append({
+                        "day": day,
+                        "from_variety": str(cur["variety"]),
+                        "to_variety":   str(nxt["variety"]),
+                        "from_grower":  str(cur.get("grower") or "—"),
+                        "to_grower":    str(nxt.get("grower") or "—"),
+                        "from_end":     cur["end_dt"].strftime("%H:%M"),
+                        "to_start":     nxt["start_dt"].strftime("%H:%M"),
+                        "gap_min":      gap_min,
+                        "operator":     str(cur.get("operator_machine") or nxt.get("operator_machine") or "—"),
+                    })
+
+            if not changeovers:
+                st.info("No variety changeovers in the selected period.")
+            else:
+                co_data = pd.DataFrame(changeovers)
+                avg_gap = co_data["gap_min"].mean()
+                med_gap = co_data["gap_min"].median()
+                min_gap = co_data["gap_min"].min()
+                max_gap = co_data["gap_min"].max()
+                n_changes = len(co_data)
+
+                # KPI strip
+                cok1, cok2, cok3, cok4 = st.columns(4)
+                cok1.markdown(kpi_html("Variety Changeovers", f"{n_changes:,}",
+                                       "in selected period"), unsafe_allow_html=True)
+                cok2.markdown(kpi_html("Avg Changeover", f"{avg_gap:.0f} min",
+                                       f"median {med_gap:.0f} min"), unsafe_allow_html=True)
+                cok3.markdown(kpi_html("Fastest", f"{min_gap:.0f} min",
+                                       "shortest in period"), unsafe_allow_html=True)
+                cok4.markdown(kpi_html("Slowest", f"{max_gap:.0f} min",
+                                       "longest in period"), unsafe_allow_html=True)
+
+                co_l, co_r = st.columns([1.4, 1])
+
+                with co_l:
+                    # Changeover length distribution
+                    fig_co = px.histogram(
+                        co_data, x="gap_min", nbins=20,
+                        color_discrete_sequence=[BLUE],
+                        labels={"gap_min": "Changeover (minutes)"},
+                    )
+                    fig_co.add_vline(x=avg_gap, line_dash="dot", line_color=ROSE,
+                                     annotation_text=f"Avg {avg_gap:.0f} min",
+                                     annotation_font_color=ROSE,
+                                     annotation_position="top right")
+                    fig_co.update_traces(hovertemplate="%{x:.0f} min: %{y} changeovers<extra></extra>", name="")
+                    apply_plot_theme(fig_co, height=320)
+                    fig_co.update_layout(showlegend=False, yaxis_title="Changeovers")
+                    st.plotly_chart(fig_co, use_container_width=True)
+
+                with co_r:
+                    # Average changeover per machine operator (if data present)
+                    if "operator" in co_data.columns and (co_data["operator"] != "—").any():
+                        op_co = (co_data[co_data["operator"] != "—"]
+                                       .groupby("operator", as_index=False)
+                                       .agg(avg_min=("gap_min","mean"),
+                                            changeovers=("gap_min","size")))
+                        if not op_co.empty:
+                            op_co = op_co.sort_values("avg_min", ascending=True)
+                            fig_op_co = px.bar(
+                                op_co, x="avg_min", y="operator", orientation="h",
+                                text=op_co["avg_min"].round(0).astype(int).astype(str) + " min",
+                                color="avg_min",
+                                color_continuous_scale=["#dbeeff", BLUE],
+                                labels={"avg_min": "Avg changeover (min)", "operator": "Machine Op"},
+                                hover_data={"changeovers": True},
+                            )
+                            fig_op_co.update_coloraxes(showscale=False)
+                            fig_op_co.update_traces(textposition="outside",
+                                                    textfont=dict(family="DM Mono, monospace", size=11, color="#0f1d35"),
+                                                    cliponaxis=False)
+                            apply_plot_theme(fig_op_co, height=max(260, 40 * len(op_co)))
+                            fig_op_co.update_layout(showlegend=False)
+                            fig_op_co.update_xaxes(range=[0, op_co["avg_min"].max() * 1.18])
+                            st.plotly_chart(fig_op_co, use_container_width=True)
+                        else:
+                            st.info("No operator names attached to changeovers.")
+                    else:
+                        st.info("No machine-operator names recorded for the changeovers in this period.")
+
+                # Detail table
+                st.markdown(
+                    '<div style="font-size:0.85rem;font-weight:600;color:var(--ink);margin:6px 0;">'
+                    'Every changeover in the period</div>',
+                    unsafe_allow_html=True
+                )
+                co_disp = co_data.copy()
+                co_disp["Date"] = co_disp["day"].dt.strftime("%Y-%m-%d")
+                co_disp["From"] = (co_disp["from_variety"].str.replace("_"," ").str.title()
+                                   + " (" + co_disp["from_grower"] + ")")
+                co_disp["To"]   = (co_disp["to_variety"].str.replace("_"," ").str.title()
+                                   + " (" + co_disp["to_grower"] + ")")
+                co_disp["Gap"]  = co_disp["gap_min"].round(0).astype(int).astype(str) + " min"
+                co_disp = co_disp.rename(columns={"from_end":"Prev End","to_start":"Next Start","operator":"Machine Op"})
+                show_co = co_disp[["Date","From","Prev End","To","Next Start","Gap","Machine Op"]] \
+                              .sort_values("Date", ascending=False)
+                st.dataframe(show_co, use_container_width=True, hide_index=True,
+                             height=min(360, 60 + 36 * min(len(show_co), 10)))
+
+        # ════════════════════════════════════════════════════════
+        # QUALITY OPERATOR — TEST DROP ACTIVITY
+        # ════════════════════════════════════════════════════════
+        if ("operator_quality" in ops_df.columns
+                and ("test_drop_count" in ops_df.columns or "test_drop_kg" in ops_df.columns)):
+            td_df = ops_df.dropna(subset=["operator_quality"]).copy()
+            td_df = td_df[td_df["operator_quality"].astype(str).str.strip() != ""]
+
+            # Need at least one test_drop value to show anything meaningful
+            has_td = (("test_drop_count" in td_df.columns and td_df["test_drop_count"].notna().any())
+                      or ("test_drop_kg" in td_df.columns and td_df["test_drop_kg"].notna().any()))
+
+            if not td_df.empty and has_td:
+                st.markdown("---")
+                st.markdown('<div class="section-title">Quality Operator — Test Drop Activity</div>', unsafe_allow_html=True)
+                st.caption(
+                    "Test drops are samples the **quality operator** pulls off the line to verify grading by hand. "
+                    "More drops = more thorough QC. Coverage (% of runs where a drop was taken) is the better long-term signal "
+                    "than raw counts because run lengths vary."
+                )
+
+                # Totals + KPIs
+                n_runs_q     = len(td_df)
+                n_runs_with_td = ((td_df["test_drop_count"].fillna(0) > 0)
+                                  | (td_df.get("test_drop_kg", pd.Series([0]*len(td_df))).fillna(0) > 0)).sum()
+                total_drops  = int(td_df["test_drop_count"].dropna().sum()) if "test_drop_count" in td_df.columns else 0
+                total_kg     = float(td_df["test_drop_kg"].dropna().sum()) if "test_drop_kg" in td_df.columns else 0
+                avg_drops    = (td_df["test_drop_count"].dropna().mean()
+                                if "test_drop_count" in td_df.columns and td_df["test_drop_count"].notna().any() else None)
+                coverage_pct = (n_runs_with_td / n_runs_q * 100) if n_runs_q else 0
+
+                tdk1, tdk2, tdk3, tdk4 = st.columns(4)
+                tdk1.markdown(kpi_html("Runs with QC Drops", f"{n_runs_with_td:,} / {n_runs_q:,}",
+                                       f"{coverage_pct:.0f}% coverage"), unsafe_allow_html=True)
+                tdk2.markdown(kpi_html("Total Drops", f"{total_drops:,}",
+                                       "samples pulled in period"), unsafe_allow_html=True)
+                tdk3.markdown(kpi_html("Total Weight", f"{total_kg:.1f} kg",
+                                       "fruit sampled in period"), unsafe_allow_html=True)
+                tdk4.markdown(kpi_html("Avg Drops / Run",
+                                       f"{avg_drops:.1f}" if avg_drops is not None else "N/A",
+                                       "across QC-tracked runs"), unsafe_allow_html=True)
+
+                # Per-quality-operator breakdown (since you only have Soo today,
+                # this still works fine when more operators are added later)
+                td_g = (td_df.groupby("operator_quality", as_index=False)
+                              .agg(runs=("operator_quality","size"),
+                                   drops=("test_drop_count","sum") if "test_drop_count" in td_df.columns
+                                          else ("operator_quality","size"),
+                                   kg=("test_drop_kg","sum") if "test_drop_kg" in td_df.columns
+                                          else ("operator_quality","size"))
+                              .rename(columns={"operator_quality":"Operator"}))
+                # Coverage per operator
+                def _cov(op):
+                    sub = td_df[td_df["operator_quality"] == op]
+                    if sub.empty: return 0
+                    hit = ((sub["test_drop_count"].fillna(0) > 0)
+                           | (sub.get("test_drop_kg", pd.Series([0]*len(sub))).fillna(0) > 0)).sum()
+                    return hit / len(sub) * 100
+                td_g["coverage_pct"] = td_g["Operator"].apply(_cov).round(0).astype(int)
+
+                td_left, td_right = st.columns([1.3, 1])
+
+                with td_left:
+                    # Drops over time (daily bars) — most useful operational view
+                    daily_td = (td_df.dropna(subset=["test_drop_count"])
+                                     .assign(day=td_df["run_date"].dt.normalize())
+                                     .groupby("day", as_index=False)
+                                     .agg(drops=("test_drop_count","sum"),
+                                          kg=("test_drop_kg","sum") if "test_drop_kg" in td_df.columns else ("test_drop_count","sum"),
+                                          runs=("test_drop_count","size")))
+                    if not daily_td.empty:
+                        fig_td_daily = px.bar(
+                            daily_td, x="day", y="drops",
+                            color_discrete_sequence=[BLUE],
+                            labels={"day": "Date", "drops": "Drops"},
+                            hover_data={"kg": ":.1f", "runs": True},
+                        )
+                        fig_td_daily.update_traces(
+                            hovertemplate="%{x|%a %d %b}<br>%{y} drops<br>%{customdata[0]:.1f} kg<br>%{customdata[1]} runs<extra></extra>",
+                            name=""
+                        )
+                        apply_plot_theme(fig_td_daily, height=320)
+                        fig_td_daily.update_layout(showlegend=False, xaxis_title=None)
+                        st.plotly_chart(fig_td_daily, use_container_width=True)
+                    else:
+                        st.info("No daily test-drop activity to chart.")
+
+                with td_right:
+                    # Per-operator table
+                    op_disp = td_g[["Operator","runs","drops","kg","coverage_pct"]].copy()
+                    op_disp = op_disp.rename(columns={
+                        "runs":"Runs","drops":"Total Drops","kg":"Total Kg","coverage_pct":"Coverage %"
+                    })
+                    op_disp["Total Drops"] = op_disp["Total Drops"].fillna(0).astype(int)
+                    op_disp["Total Kg"] = op_disp["Total Kg"].fillna(0).round(1)
+                    op_disp["Coverage %"] = op_disp["Coverage %"].astype(str) + "%"
+                    op_disp = op_disp.sort_values("Total Drops", ascending=False)
+                    st.dataframe(op_disp, use_container_width=True, hide_index=True,
+                                 height=min(320, 60 + 38 * min(len(op_disp), 6)))
+
         # ── Operator presence (only if data exists) ───────────
         op_present = pd.DataFrame()
         if has_machine or has_quality:
