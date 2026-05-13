@@ -669,14 +669,20 @@ if runs is None:
 
 # ─────────────────────────────────────────────────────────────
 # CLEAN MODE_ORDER — authoritative list of modes per variety
-# Each row: mode_order, variety, mode
+# Cols: mode_order, variety, mode, clean_boundary, clean_amounts,
+#       leaf_boundary, leaf_amounts
+#   *_boundary  = numeric boundary value at which clean/leaf fruits register
+#   *_amounts   = categorical fruit count level (none / low / medium / high / top)
 # ─────────────────────────────────────────────────────────────
 if mode_order is not None:
-    for col in ("variety", "mode"):
+    for col in ("variety", "mode", "clean_amounts", "leaf_amounts"):
         if col in mode_order.columns:
             mode_order[col] = mode_order[col].fillna("").astype(str).str.strip().replace("", pd.NA)
     if "mode_order" in mode_order.columns:
         mode_order["mode_order"] = pd.to_numeric(mode_order["mode_order"], errors="coerce")
+    for col in ("clean_boundary", "leaf_boundary"):
+        if col in mode_order.columns:
+            mode_order[col] = pd.to_numeric(mode_order[col], errors="coerce")
     mode_order = mode_order.dropna(subset=["variety", "mode"])
 
 # ─────────────────────────────────────────────────────────────
@@ -1034,8 +1040,7 @@ if st.session_state.show_filters:
         with s1:
             search_query = st.text_input(
                 "🔎  Search",
-                value=st.session_state.get("search_q", ""),
-                placeholder="Type a run ID, grower, variety, batch, mode, defect, or any keyword…",
+                placeholder="Type a run ID, grower, variety, batch, mode, defect, operator, or any keyword…",
                 key="search_q",
                 label_visibility="visible",
             )
@@ -1670,6 +1675,103 @@ elif page.endswith("IQS"):
 
         st.markdown("---")
 
+        # ════════════════════════════════════════════════════════
+        # LATEST DEC FILE VERSION & ONGOING TRAINING
+        # ════════════════════════════════════════════════════════
+        st.markdown('<div class="section-title">Latest Dec File Versions & Ongoing Training</div>', unsafe_allow_html=True)
+        st.caption(
+            "**Latest completed version** = most recent training that has come back from Greefa or IFA. "
+            "**Ongoing training** = submissions sent to Greefa that haven't yet been completed (no completion date). "
+            "Use this to keep operators aware of when an updated dec file will land."
+        )
+
+        lv_left, lv_right = st.columns([1, 1])
+
+        # ── LEFT: Latest completed versions ──────────────────
+        with lv_left:
+            latest_table = pd.DataFrame()
+            if dec_file is not None and not dec_file.empty:
+                completed = dec_file[dec_file["status"] == "Completed"].copy()
+                # Filter by current variety selection if specific
+                if selected_mode_variety != "All varieties" and "variety" in completed.columns:
+                    completed = completed[completed["variety"].astype(str) == selected_mode_variety]
+
+                if not completed.empty and "date_complete" in completed.columns:
+                    # For each variety, find the most recent completion
+                    completed = completed.sort_values("date_complete", ascending=False)
+                    latest_rows = []
+                    for var, grp in completed.groupby("variety"):
+                        most_recent = grp.iloc[0]
+                        latest_rows.append({
+                            "Variety": str(var).replace("_", " ").title(),
+                            "Latest Version": most_recent.get("decfile_ver") or "—",
+                            "Source": most_recent.get("training_source") or "—",
+                            "Completed": pd.to_datetime(most_recent["date_complete"]).strftime("%Y-%m-%d")
+                                if pd.notna(most_recent.get("date_complete")) else "—",
+                            "Defects": int(most_recent.get("defect_count", 0)) if pd.notna(most_recent.get("defect_count")) else 0,
+                        })
+                    latest_table = pd.DataFrame(latest_rows).sort_values("Completed", ascending=False)
+
+            if not latest_table.empty:
+                st.markdown(
+                    '<div style="font-size:0.9rem;font-weight:600;color:var(--ink);margin-bottom:8px;">'
+                    '✅ Latest Completed Versions</div>',
+                    unsafe_allow_html=True
+                )
+                st.dataframe(latest_table, use_container_width=True, hide_index=True,
+                             height=min(280, 60 + 38 * min(len(latest_table), 6)))
+            else:
+                if selected_mode_variety != "All varieties":
+                    st.info(f"No completed training records yet for **{selected_mode_variety}**.")
+                else:
+                    st.info("No completed training records found.")
+
+        # ── RIGHT: Ongoing training (pending) ────────────────
+        with lv_right:
+            ongoing_table = pd.DataFrame()
+            if dec_file is not None and not dec_file.empty:
+                pending = dec_file[dec_file["status"] == "Pending"].copy()
+                # Filter by current variety selection if specific
+                if selected_mode_variety != "All varieties" and "variety" in pending.columns:
+                    pending = pending[pending["variety"].astype(str) == selected_mode_variety]
+
+                if not pending.empty:
+                    today = pd.Timestamp.today().normalize()
+                    pending = pending.copy()
+                    pending["days_open"] = (today - pending["date_submit"]).dt.days
+                    pending["Variety"] = pending["variety"].astype(str).str.replace("_", " ").str.title()
+                    pending["Submitted"] = pd.to_datetime(pending["date_submit"]).dt.strftime("%Y-%m-%d")
+                    pending["Days Open"] = pending["days_open"].astype("Int64")
+                    pending["Defects"] = pending["defect_count"].astype("Int64") if "defect_count" in pending.columns else 0
+                    pending["Type"] = pending["decfile_type"].fillna("—") if "decfile_type" in pending.columns else "—"
+                    ongoing_table = pending[["Variety","Submitted","Days Open","Defects","Type"]] \
+                                        .sort_values("Days Open", ascending=False)
+
+            if not ongoing_table.empty:
+                n_ongoing = len(ongoing_table)
+                # KPI banner above the table
+                oldest = int(ongoing_table["Days Open"].max())
+                if oldest >= 21:
+                    banner = (
+                        f'<div class="alert-card">⚠️ <b>{n_ongoing} training submission{"s" if n_ongoing != 1 else ""}'
+                        f' in progress.</b> Oldest is <b>{oldest} days old</b> — chase Greefa.</div>'
+                    )
+                else:
+                    banner = (
+                        f'<div class="good-card">🚧 <b>{n_ongoing} training submission{"s" if n_ongoing != 1 else ""}'
+                        f' in progress.</b> Oldest is {oldest} days old.</div>'
+                    )
+                st.markdown(banner, unsafe_allow_html=True)
+                st.dataframe(ongoing_table, use_container_width=True, hide_index=True,
+                             height=min(260, 50 + 38 * min(len(ongoing_table), 5)))
+            else:
+                if selected_mode_variety != "All varieties":
+                    st.success(f"✅ No ongoing training for **{selected_mode_variety}** — all submissions completed.")
+                else:
+                    st.success("✅ No training submissions in progress right now.")
+
+        st.markdown("---")
+
         # ── Selection context (left) + Top Defects chart (right) ──────
         ctx_left, ctx_right = st.columns([1, 1.4])
 
@@ -1860,6 +1962,139 @@ elif page.endswith("IQS"):
 
         st.markdown("---")
 
+        # ════════════════════════════════════════════════════════
+        # CLEAN & LEAF FRUIT DETECTION REFERENCE
+        # ════════════════════════════════════════════════════════
+        st.markdown('<div class="section-title">Clean & Leaf Fruit Detection Reference</div>', unsafe_allow_html=True)
+        st.caption(
+            "When clean fruits or leaf fruits were tested through the line, these are the **boundary** values "
+            "at which each mode registered the fruit, and how many fruits were detected (**amounts**). "
+            "Use this as a reference when tuning a mode — if the boundary is too sensitive, clean fruits will get flagged. "
+            "Source: **mode_order.csv**. Blank = no calibration recorded yet for that mode."
+        )
+
+        if mode_order is None or mode_order.empty:
+            st.info("mode_order.csv not loaded — clean/leaf reference unavailable.")
+        elif selected_mode_variety == "All varieties":
+            st.info("Select a specific **variety** in the filter to see clean/leaf detection values for its modes.")
+        else:
+            cl_ref = mode_order[mode_order["variety"].astype(str) == selected_mode_variety].copy()
+
+            if cl_ref.empty:
+                st.info(
+                    f"**{selected_mode_variety}** isn't in mode_order.csv yet. "
+                    "Add this variety to enable clean/leaf reference."
+                )
+            else:
+                cl_ref = cl_ref.sort_values("mode_order")
+
+                # Headline KPIs
+                n_modes_total = len(cl_ref)
+                n_clean_tested = cl_ref["clean_boundary"].notna().sum() if "clean_boundary" in cl_ref.columns else 0
+                n_leaf_tested  = cl_ref["leaf_boundary"].notna().sum() if "leaf_boundary" in cl_ref.columns else 0
+
+                cl_k1, cl_k2, cl_k3 = st.columns(3)
+                cl_k1.markdown(kpi_html(
+                    "Modes in Reference", f"{n_modes_total}",
+                    f"for {selected_mode_variety.replace('_', ' ').title()}"
+                ), unsafe_allow_html=True)
+                cl_k2.markdown(kpi_html(
+                    "Clean-Fruit Tested", f"{n_clean_tested} / {n_modes_total}",
+                    f"{(n_clean_tested / n_modes_total * 100):.0f}% coverage" if n_modes_total else ""
+                ), unsafe_allow_html=True)
+                cl_k3.markdown(kpi_html(
+                    "Leaf-Fruit Tested", f"{n_leaf_tested} / {n_modes_total}",
+                    f"{(n_leaf_tested / n_modes_total * 100):.0f}% coverage" if n_modes_total else ""
+                ), unsafe_allow_html=True)
+
+                st.markdown("")
+
+                # Sub-tabs: by mode (full table) | clean only | leaf only
+                cl_view = st.radio(
+                    "View",
+                    ["📋  All Modes", "🟢  Clean Fruit Only", "🍃  Leaf Fruit Only"],
+                    horizontal=True,
+                    key="cl_view"
+                )
+
+                def _fmt_boundary(v):
+                    if pd.isna(v): return "—"
+                    iv = int(v) if float(v).is_integer() else v
+                    return f"{iv:,}"
+
+                def _fmt_amount(v):
+                    if pd.isna(v): return "—"
+                    return str(v)
+
+                # Build display dataframe
+                cl_disp = pd.DataFrame({
+                    "#": cl_ref["mode_order"].astype("Int64") if "mode_order" in cl_ref.columns else range(1, len(cl_ref)+1),
+                    "Mode": cl_ref["mode"].astype(str),
+                    "Clean Boundary": cl_ref["clean_boundary"].apply(_fmt_boundary)
+                                       if "clean_boundary" in cl_ref.columns else "—",
+                    "Clean Amounts": cl_ref["clean_amounts"].apply(_fmt_amount)
+                                       if "clean_amounts" in cl_ref.columns else "—",
+                    "Leaf Boundary": cl_ref["leaf_boundary"].apply(_fmt_boundary)
+                                       if "leaf_boundary" in cl_ref.columns else "—",
+                    "Leaf Amounts": cl_ref["leaf_amounts"].apply(_fmt_amount)
+                                       if "leaf_amounts" in cl_ref.columns else "—",
+                })
+
+                if cl_view == "🟢  Clean Fruit Only":
+                    cl_disp = cl_disp[cl_disp["Clean Boundary"] != "—"]
+                    show_cols = ["#","Mode","Clean Boundary","Clean Amounts"]
+                elif cl_view == "🍃  Leaf Fruit Only":
+                    cl_disp = cl_disp[cl_disp["Leaf Boundary"] != "—"]
+                    show_cols = ["#","Mode","Leaf Boundary","Leaf Amounts"]
+                else:
+                    show_cols = ["#","Mode","Clean Boundary","Clean Amounts","Leaf Boundary","Leaf Amounts"]
+
+                if cl_disp.empty:
+                    st.info("No data recorded for this view.")
+                else:
+                    st.dataframe(
+                        cl_disp[show_cols],
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(500, 60 + 36 * min(len(cl_disp), 14)),
+                    )
+
+                # Bar chart: top modes by amounts category (where data exists)
+                cl_chart_df = cl_ref.dropna(subset=["clean_boundary","leaf_boundary"], how="all").copy()
+                if not cl_chart_df.empty:
+                    chart_rows = []
+                    for _, r in cl_chart_df.iterrows():
+                        mode_name = str(r["mode"])
+                        if pd.notna(r.get("clean_boundary")):
+                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Clean",
+                                               "Boundary": float(r["clean_boundary"]),
+                                               "Amount": r.get("clean_amounts") or "—"})
+                        if pd.notna(r.get("leaf_boundary")):
+                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Leaf",
+                                               "Boundary": float(r["leaf_boundary"]),
+                                               "Amount": r.get("leaf_amounts") or "—"})
+                    chart_df_cl = pd.DataFrame(chart_rows)
+                    if not chart_df_cl.empty:
+                        st.markdown("")
+                        st.markdown(
+                            '<div style="font-size:0.85rem;font-weight:600;color:var(--ink);margin:8px 0;">'
+                            'Boundary values by mode (clean vs leaf)</div>',
+                            unsafe_allow_html=True
+                        )
+                        fig_cl = px.bar(
+                            chart_df_cl.sort_values("Boundary", ascending=True),
+                            x="Boundary", y="Mode", color="Fruit Type",
+                            orientation="h", barmode="group",
+                            color_discrete_map={"Clean": EMERALD, "Leaf": AMBER},
+                            labels={"Boundary": "Boundary value", "Mode": "Mode"},
+                            hover_data={"Amount": True},
+                        )
+                        fig_cl.update_traces(hovertemplate="%{y}<br>%{fullData.name} boundary: %{x}<br>Amounts: %{customdata[0]}<extra></extra>")
+                        apply_plot_theme(fig_cl, height=max(360, 26 * len(chart_df_cl["Mode"].unique())))
+                        st.plotly_chart(fig_cl, use_container_width=True)
+
+        st.markdown("---")
+
         # ── Defect Investigation Workflow — bidirectional ─────────
         st.markdown('<div class="section-title">Defect Investigation Workflow</div>', unsafe_allow_html=True)
 
@@ -1906,11 +2141,20 @@ elif page.endswith("IQS"):
                     if not rdf.empty:
                         rows = []
                         for keys, grp in rdf.groupby(["mode","check_class"], dropna=False):
-                            _, allb = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
+                            _, own_b = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
+                            # Reference Boundaries — same variety, all growers
+                            ref_grp = variety_pool
+                            if "mode" in ref_grp.columns:
+                                ref_grp = ref_grp[ref_grp["mode"].astype(str) == str(keys[0])]
+                            if "check_class" in ref_grp.columns and pd.notna(keys[1]):
+                                ref_grp = ref_grp[ref_grp["check_class"].astype(str) == str(keys[1])]
+                            _, ref_b = summarize_boundaries(ref_grp["boundary_after"]) \
+                                if "boundary_after" in ref_grp.columns else ("","")
                             rows.append({
                                 "Mode": keys[0],
                                 "Check Class": keys[1],
-                                "Boundaries": allb,
+                                "Boundaries": own_b or "—",
+                                "Reference Boundaries": ref_b or "—",
                                 "Count": len(grp),
                             })
                         related_modes = pd.DataFrame(rows).sort_values("Count", ascending=False)
@@ -1993,11 +2237,19 @@ elif page.endswith("IQS"):
                     if not rdf.empty:
                         rows = []
                         for keys, grp in rdf.groupby(["mode","check_class"], dropna=False):
-                            _, allb = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
+                            _, own_b = summarize_boundaries(grp["boundary_after"]) if "boundary_after" in grp.columns else ("","")
+                            ref_grp = variety_pool
+                            if "mode" in ref_grp.columns:
+                                ref_grp = ref_grp[ref_grp["mode"].astype(str) == str(keys[0])]
+                            if "check_class" in ref_grp.columns and pd.notna(keys[1]):
+                                ref_grp = ref_grp[ref_grp["check_class"].astype(str) == str(keys[1])]
+                            _, ref_b = summarize_boundaries(ref_grp["boundary_after"]) \
+                                if "boundary_after" in ref_grp.columns else ("","")
                             rows.append({
                                 "Mode": keys[0],
                                 "Check Class": keys[1],
-                                "Boundaries": allb,
+                                "Boundaries": own_b or "—",
+                                "Reference Boundaries": ref_b or "—",
                                 "Count": len(grp),
                             })
                         out_df = pd.DataFrame(rows).sort_values("Count", ascending=False)
@@ -2748,9 +3000,10 @@ elif page.endswith("Training"):
 elif page.endswith("Search"):
     st.markdown('<div class="section-title">Search Across All Records</div>', unsafe_allow_html=True)
     st.caption(
-        "Type any keyword: a run ID, grower name, variety, batch number, mode, defect — or part of any. "
-        "Use the **Where** filter to narrow which dataset to look in. "
-        "Results are case-insensitive."
+        "Type any keyword: a run ID, grower, variety, batch, mode, defect, operator name, downtime reason — "
+        "or part of any. Use the **Where** filter to narrow which dataset. Case-insensitive. "
+        "A keyword in one dataset (e.g. a defect in **Batches**) will also surface linked records "
+        "from other datasets (e.g. the **Runs** that processed those batches)."
     )
 
     q = (search_query or "").strip()
@@ -2760,7 +3013,7 @@ elif page.endswith("Search"):
         ql = q.lower()
 
         def _row_contains(df, query_lc, cols=None):
-            """Return df subset where any cell in `cols` (or all str cols) contains query."""
+            """Return df subset where any cell in `cols` (or all cols) contains query."""
             if df is None or df.empty:
                 return df
             target_cols = cols if cols else df.columns
@@ -2773,16 +3026,77 @@ elif page.endswith("Search"):
             return df[mask]
 
         scope = search_scope
-        results = []   # list of (label, dataframe, display_columns_renamed)
+        results = []
+
+        # ── Find matching batch_ids first (defects, version, leaf_present) ──
+        matching_batch_ids = set()
+        if batches is not None:
+            bcols_search = [c for c in ["batch_id","grower","variety","decfile_version",
+                                        "defect_1","defect_2","defect_3","leaf_present","premium",
+                                        "premium%","notes_batches"] if c in batches.columns]
+            b_match = _row_contains(batches, ql, bcols_search)
+            if not b_match.empty and "batch_id" in b_match.columns:
+                matching_batch_ids = set(b_match["batch_id"].dropna().astype(str).tolist())
+
+        # ── Find matching run_ids from changes (mode, reason, action) ──
+        matching_run_ids_from_changes = set()
+        if changes is not None:
+            ccols_search = [c for c in ["run_id","variety","mode","check_class","action",
+                                        "boundary_before","boundary_after","sensitivity","accuracy",
+                                        "reason","notes_changes"] if c in changes.columns]
+            c_match = _row_contains(changes, ql, ccols_search)
+            if not c_match.empty and "run_id" in c_match.columns:
+                matching_run_ids_from_changes = set(c_match["run_id"].dropna().astype(str).tolist())
+
+        # ── Find matching run_ids from downtime ──
+        matching_run_ids_from_downtime = set()
+        if downtime is not None:
+            dcols_search = [c for c in ["run_id","downtime_start","downtime_end",
+                                        "duration_hours","downtime_area","downtime_reason"] if c in downtime.columns]
+            d_match = _row_contains(downtime, ql, dcols_search)
+            if not d_match.empty and "run_id" in d_match.columns:
+                matching_run_ids_from_downtime = set(d_match["run_id"].dropna().astype(str).tolist())
 
         # ── Runs ──────────────────────────────────────────────
+        # Hit if: direct match in run fields, OR linked to a matching batch_id,
+        # OR linked to a matching change/downtime run_id.
         if scope in ("All sources", "Runs") and runs is not None:
             run_cols = [c for c in ["run_date","run_id","grower","variety","batch_id",
                                     "operator_machine","operator_quality","bins_run","retip",
                                     "premium_rate","juice_rate","notes_run"] if c in runs.columns]
-            run_hit = _row_contains(runs, ql, run_cols)
+            direct_hit = _row_contains(runs, ql, run_cols)
+
+            linked_mask = pd.Series(False, index=runs.index)
+            if matching_batch_ids and "batch_id" in runs.columns:
+                linked_mask |= runs["batch_id"].astype(str).isin(matching_batch_ids)
+            all_matching_run_ids = matching_run_ids_from_changes | matching_run_ids_from_downtime
+            if all_matching_run_ids and "run_id" in runs.columns:
+                linked_mask |= runs["run_id"].astype(str).isin(all_matching_run_ids)
+            linked_hit = runs[linked_mask]
+
+            run_hit = pd.concat([direct_hit, linked_hit]).drop_duplicates()
             if not run_hit.empty:
-                disp = run_hit[run_cols].copy()
+                # Enrich each run row with the defects of its batch
+                run_hit = run_hit.copy()
+                if batches is not None and "batch_id" in batches.columns:
+                    defect_cols = [c for c in ["defect_1","defect_2","defect_3"] if c in batches.columns]
+                    if defect_cols:
+                        b_lookup = batches[["batch_id"] + defect_cols].copy()
+                        b_lookup["batch_id"] = b_lookup["batch_id"].astype(str)
+                        run_hit["batch_id_str"] = run_hit["batch_id"].astype(str)
+                        merged = run_hit.merge(b_lookup, left_on="batch_id_str", right_on="batch_id",
+                                                how="left", suffixes=("", "_b"))
+                        def _combine_defects(row):
+                            vals = []
+                            for c in defect_cols:
+                                v = row.get(c + "_b") if (c + "_b") in row.index else row.get(c)
+                                if pd.notna(v) and str(v).strip():
+                                    vals.append(str(v).strip())
+                            return ", ".join(vals) if vals else ""
+                        run_hit["Linked Defects"] = merged.apply(_combine_defects, axis=1).values
+
+                show_run_cols = run_cols + (["Linked Defects"] if "Linked Defects" in run_hit.columns else [])
+                disp = run_hit[show_run_cols].copy()
                 if "run_date" in disp.columns:
                     disp["run_date"] = pd.to_datetime(disp["run_date"]).dt.strftime("%Y-%m-%d")
                 disp = disp.rename(columns={
@@ -2877,9 +3191,7 @@ elif page.endswith("Search"):
         if total == 0:
             st.warning(f"No matches found for **{q}**.")
         else:
-            # Summary KPI strip
-            cnts = {label: c for label, _, c in results}
-            cols_strip = st.columns(min(5, max(1, len(results) + 1)))
+            cols_strip = st.columns(min(6, max(1, len(results) + 1)))
             cols_strip[0].markdown(kpi_html("Total Matches", f"{total:,}",
                                             f"across {len(results)} dataset(s)"),
                                    unsafe_allow_html=True)
@@ -2894,4 +3206,4 @@ elif page.endswith("Search"):
                             unsafe_allow_html=True)
                 st.dataframe(df, use_container_width=True, hide_index=True,
                              height=min(420, 60 + 32 * min(len(df), 12)))
-                st.markdown("")  # spacer
+                st.markdown("")
