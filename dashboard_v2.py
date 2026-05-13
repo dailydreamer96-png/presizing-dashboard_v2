@@ -2297,9 +2297,9 @@ elif page.endswith("IQS"):
         st.markdown('<div class="section-title">Clean & Leaf Fruit Detection Reference</div>', unsafe_allow_html=True)
         st.caption(
             "These values were captured when clean (defect-free) and leaf-on fruits were tested through the line. "
-            "Each **boundary** is the **highest value that still lets the mode trigger** on a clean or leaf fruit. "
-            "**If the operator's current boundary is set _at or below_ this value, real clean/leaf fruits may falsely register as defects** — "
-            "i.e. perfectly good fruit gets rejected. Use this section as a safety floor when tuning. "
+            "Each **boundary** is the **highest value at which the clean / leaf fruit still registered** for that mode. "
+            "**If the operator's current boundary is set _above_ this value, real clean / leaf fruits will falsely trigger the mode** — "
+            "good fruit gets flagged as defective. A current boundary at-or-below the reading is fine. "
             "Source: **mode_order.csv**."
         )
 
@@ -2354,29 +2354,33 @@ elif page.endswith("IQS"):
                     leaf_b  = r.get("leaf_boundary")
                     cur_b   = current_boundary_by_mode.get(mode_name)
 
-                    # Alert logic: if current_boundary <= safety_floor, RISK
+                    # Alert logic: clean_boundary / leaf_boundary is the *highest*
+                    # value that registered the clean/leaf fruit. If the operator's
+                    # current boundary is set ABOVE that value, clean/leaf fruit
+                    # will falsely trigger the mode → AT RISK.
+                    # Current at-or-below the clean/leaf reading is fine.
                     clean_status = "—"
                     leaf_status  = "—"
                     if pd.notna(clean_b) and cur_b is not None:
-                        if cur_b <= clean_b:
+                        if cur_b > clean_b:
                             clean_status = "⚠️ AT RISK"
                             clean_alerts.append({
                                 "Mode": mode_name,
-                                "Safety Floor (Clean)": _fmt_boundary(clean_b),
+                                "Clean Reading Max": _fmt_boundary(clean_b),
                                 "Current Boundary": _fmt_boundary(cur_b),
-                                "Margin": _fmt_boundary(cur_b - clean_b),
+                                "Excess": _fmt_boundary(cur_b - clean_b),
                                 "Clean Amounts Tested": _fmt_amount(r.get("clean_amounts")),
                             })
                         else:
                             clean_status = "✅ Safe"
                     if pd.notna(leaf_b) and cur_b is not None:
-                        if cur_b <= leaf_b:
+                        if cur_b > leaf_b:
                             leaf_status = "⚠️ AT RISK"
                             leaf_alerts.append({
                                 "Mode": mode_name,
-                                "Safety Floor (Leaf)": _fmt_boundary(leaf_b),
+                                "Leaf Reading Max": _fmt_boundary(leaf_b),
                                 "Current Boundary": _fmt_boundary(cur_b),
-                                "Margin": _fmt_boundary(cur_b - leaf_b),
+                                "Excess": _fmt_boundary(cur_b - leaf_b),
                                 "Leaf Amounts Tested": _fmt_amount(r.get("leaf_amounts")),
                             })
                         else:
@@ -2414,13 +2418,13 @@ elif page.endswith("IQS"):
                 cl_k3.markdown(kpi_html(
                     "Clean-Fruit Alerts",
                     f"{n_clean_at_risk}",
-                    "current boundary ≤ safety floor" if n_clean_at_risk else "all safe",
+                    "current boundary > clean reading" if n_clean_at_risk else "all safe",
                     "down" if n_clean_at_risk else "up"
                 ), unsafe_allow_html=True)
                 cl_k4.markdown(kpi_html(
                     "Leaf-Fruit Alerts",
                     f"{n_leaf_at_risk}",
-                    "current boundary ≤ safety floor" if n_leaf_at_risk else "all safe",
+                    "current boundary > leaf reading" if n_leaf_at_risk else "all safe",
                     "down" if n_leaf_at_risk else "up"
                 ), unsafe_allow_html=True)
 
@@ -2433,7 +2437,7 @@ elif page.endswith("IQS"):
                         if clean_alerts:
                             n = len(clean_alerts)
                             st.markdown(
-                                f'<div class="alert-card">🟢⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary at-or-below the clean-fruit safety floor — clean fruit may be misread as defective.</div>',
+                                f'<div class="alert-card">🟢⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary <b>above</b> the clean-fruit reading — clean fruit will register and may be misread as defective.</div>',
                                 unsafe_allow_html=True
                             )
                             st.dataframe(pd.DataFrame(clean_alerts),
@@ -2441,7 +2445,7 @@ elif page.endswith("IQS"):
                                          height=min(260, 50 + 38 * min(n, 5)))
                         else:
                             st.markdown(
-                                '<div class="good-card">🟢 All clean-fruit safety floors are respected by the current boundaries.</div>',
+                                '<div class="good-card">🟢 All current boundaries sit at-or-below the clean-fruit reading — no false clean-fruit triggers expected.</div>',
                                 unsafe_allow_html=True
                             )
 
@@ -2449,7 +2453,7 @@ elif page.endswith("IQS"):
                         if leaf_alerts:
                             n = len(leaf_alerts)
                             st.markdown(
-                                f'<div class="alert-card">🍃⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary at-or-below the leaf-fruit safety floor — leaf-on fruit may be misread as defective.</div>',
+                                f'<div class="alert-card">🍃⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary <b>above</b> the leaf-fruit reading — leaf-on fruit will register and may be misread as defective.</div>',
                                 unsafe_allow_html=True
                             )
                             st.dataframe(pd.DataFrame(leaf_alerts),
@@ -2457,7 +2461,7 @@ elif page.endswith("IQS"):
                                          height=min(260, 50 + 38 * min(n, 5)))
                         else:
                             st.markdown(
-                                '<div class="good-card">🍃 All leaf-fruit safety floors are respected by the current boundaries.</div>',
+                                '<div class="good-card">🍃 All current boundaries sit at-or-below the leaf-fruit reading — no false leaf-fruit triggers expected.</div>',
                                 unsafe_allow_html=True
                             )
 
@@ -2499,18 +2503,18 @@ elif page.endswith("IQS"):
                         height=min(540, 60 + 36 * min(len(cl_disp), 14)),
                     )
 
-                # ── Boundary comparison chart with safety-floor line ─
+                # ── Boundary comparison chart with reading limits ─
                 cl_chart_df = cl_ref.dropna(subset=["clean_boundary","leaf_boundary"], how="all").copy()
                 if not cl_chart_df.empty:
                     chart_rows = []
                     for _, r in cl_chart_df.iterrows():
                         mode_name = str(r["mode"])
                         if pd.notna(r.get("clean_boundary")):
-                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Clean (safety floor)",
+                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Clean (max reading)",
                                                "Boundary": float(r["clean_boundary"]),
                                                "Amount": r.get("clean_amounts") or "—"})
                         if pd.notna(r.get("leaf_boundary")):
-                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Leaf (safety floor)",
+                            chart_rows.append({"Mode": mode_name, "Fruit Type": "Leaf (max reading)",
                                                "Boundary": float(r["leaf_boundary"]),
                                                "Amount": r.get("leaf_amounts") or "—"})
                         cur_b = current_boundary_by_mode.get(mode_name)
@@ -2523,7 +2527,7 @@ elif page.endswith("IQS"):
                         st.markdown("")
                         st.markdown(
                             '<div style="font-size:0.85rem;font-weight:600;color:var(--ink);margin:8px 0;">'
-                            'Safety floors vs current settings — bars to the left of either floor are at-risk</div>',
+                            'Max clean / leaf readings vs current settings — bars to the <b>right</b> of either reading are at-risk</div>',
                             unsafe_allow_html=True
                         )
                         fig_cl = px.bar(
@@ -2531,9 +2535,9 @@ elif page.endswith("IQS"):
                             x="Boundary", y="Mode", color="Fruit Type",
                             orientation="h", barmode="group",
                             color_discrete_map={
-                                "Clean (safety floor)": EMERALD,
-                                "Leaf (safety floor)":  AMBER,
-                                "Current setting":      BLUE,
+                                "Clean (max reading)": EMERALD,
+                                "Leaf (max reading)":  AMBER,
+                                "Current setting":     BLUE,
                             },
                             labels={"Boundary": "Boundary value", "Mode": "Mode"},
                             hover_data={"Amount": True},
@@ -3192,9 +3196,9 @@ elif page.endswith("Search"):
             all_matching_run_ids = matching_run_ids_from_changes | matching_run_ids_from_downtime
             if all_matching_run_ids and "run_id" in runs.columns:
                 linked_mask |= runs["run_id"].astype(str).isin(all_matching_run_ids)
-            linked_hit = runs[linked_mask]
-
-            run_hit = pd.concat([direct_hit, linked_hit]).drop_duplicates()
+            # Union via indices (avoids drop_duplicates issues on wide data)
+            combined_idx = direct_hit.index.union(runs[linked_mask].index)
+            run_hit = runs.loc[combined_idx] if len(combined_idx) else runs.iloc[0:0]
             if not run_hit.empty:
                 # Enrich each run row with the defects of its batch.
                 # Use a dict lookup keyed by batch_id (safer than merge —
@@ -3291,15 +3295,20 @@ elif page.endswith("Search"):
             tcols = [c for c in ["training_source","date_submit","date_complete","variety",
                                  "reference_dec","decfile_ver","decfile_type",
                                  "defect_count","status","NOTES"] if c in dec_file.columns]
-            # Also search across the long-list of defects (defects_list)
             base_hit = _row_contains(dec_file, ql, tcols)
+
+            # Also search across the long-list of defects (defects_list).
+            # We collect *indices* and union them — never drop_duplicates on the
+            # full DataFrame because the defects_list column holds Python lists
+            # which are unhashable and break pandas' factorize.
             extra_hit_idx = []
             if "defects_list" in dec_file.columns:
                 for idx, items in dec_file["defects_list"].items():
                     if items and any(ql in str(d).lower() for d in items):
                         extra_hit_idx.append(idx)
-            t_hit = pd.concat([base_hit, dec_file.loc[extra_hit_idx]]).drop_duplicates() \
-                    if extra_hit_idx else base_hit
+
+            combined_idx = base_hit.index.union(pd.Index(extra_hit_idx))
+            t_hit = dec_file.loc[combined_idx] if len(combined_idx) else dec_file.iloc[0:0]
             if not t_hit.empty:
                 disp = t_hit[tcols].copy()
                 for dc in ("date_submit","date_complete"):
