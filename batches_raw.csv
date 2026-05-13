@@ -161,13 +161,14 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8647,plunketts,pink_lady,2026-04-22,2026-04-22,P18,O022,lenticel,,,no,yes,40,
 8649,plunketts,pink_lady,2026-04-21,2026-04-23,P12,O022,russets_stem,insect,lump,no,yes,40,ifa from 3 to 4.5
 8652,ardrossan,kanzi,2026-04-21,2026-04-21,,N003,stem_average,bruises,leaf,yes,no,0,manual bin
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
+8655,apple_thief,kanzi,2026-04-01,2026-04-19,,N003,bitterpit,san_jose,bruises,no,no,0,"Few galas is mix across the bins, wrong list from Andrew as gala"
+8658,apple_thief,gala,2026-03-06,2026-03-06,,O004,scab,dirt_skin,overripe,no,no,0,
+8662,pottenger,gala,2026-02-13,2026-02-13,,O004,sunburn_major,holes,sunburn,yes,no,50,
+8664,sagar ardmona,gala,2026-02-13,2026-02-13,,O004,leaf,holes,bruises,yes,yes,50,
+8665,bundara,gala,2026-02-13,2026-02-13,B6,O004,crack_stem,overripe,sunburn,no,yes,50,
+8668,sagar ardmona,granny_smith,2026-04-02,2026-04-08,,Z011,russets,sunburn,major,no,no,0,
+8671,plunketts,pink_lady,2026-04-28,2026-04-28,P8,O022,lenticel,holes,bruises,no,no,40,
+8672,plunketts,pink_lady,2026-04-29,2026-04-30,P12,O022,insect,bruises,color_skin,no,no,40,
 ,,,,,,,,,,,,,
 ,,,,,,,,,,,,,
 ,,,,,,,,,,,,,
