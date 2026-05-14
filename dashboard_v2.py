@@ -1886,11 +1886,36 @@ elif page.endswith("IQS"):
 
         # ── Top Adjusted Modes table — reordered columns ─────────────
         st.markdown('<div class="section-title">Top Adjusted Modes</div>', unsafe_allow_html=True)
-        st.caption("**Boundaries** = after-boundaries recorded for *this* grower + variety.  **Reference Boundaries** = after-boundaries seen for *the same variety across all growers* (broader reference pool).")
+        st.caption(
+            "**Boundaries** = after-boundaries recorded for *this* grower + variety.  "
+            "**Reference Boundaries** = same variety across all growers (broader pool).  "
+            "**Adj %** = adjustments ÷ (adjustments + checks) for this mode across the whole history. "
+            "A high Adj % means this mode usually needs tuning — spend time on it. "
+            "A low Adj % means it's mostly just verified — safe to skip a deep dive next time."
+        )
 
         adjusted_mode_table = pd.DataFrame()
         if "mode" in filtered_mode.columns and "action" in filtered_mode.columns:
             adjusted = filtered_mode[filtered_mode["action"].astype(str).str.lower().str.startswith("a")].copy()
+            checked  = filtered_mode[filtered_mode["action"].astype(str).str.lower().str.startswith("c")].copy()
+
+            # Pre-compute (mode, check_class) → count for adjustments / checks across the
+            # WHOLE history (mode_df, not filtered), so the Adj % reflects the long-run
+            # behaviour of the mode and isn't skewed by the current grower/version filter.
+            hist_adj_counts = {}
+            hist_chk_counts = {}
+            if "action" in mode_df.columns and "mode" in mode_df.columns:
+                act_str = mode_df["action"].astype(str).str.lower().str[:1]
+                if "check_class" in mode_df.columns:
+                    for (m, cc), grp in mode_df.groupby(["mode","check_class"], dropna=False):
+                        a_str = grp["action"].astype(str).str.lower().str[:1]
+                        hist_adj_counts[(str(m), str(cc))] = int((a_str == "a").sum())
+                        hist_chk_counts[(str(m), str(cc))] = int((a_str == "c").sum())
+                else:
+                    for m, grp in mode_df.groupby("mode", dropna=False):
+                        a_str = grp["action"].astype(str).str.lower().str[:1]
+                        hist_adj_counts[(str(m), "")] = int((a_str == "a").sum())
+                        hist_chk_counts[(str(m), "")] = int((a_str == "c").sum())
 
             # reference adjusted pool (same variety, all growers)
             variety_adjusted = variety_pool.copy()
@@ -1920,6 +1945,22 @@ elif page.endswith("IQS"):
                     sensitivity_text = ", ".join(sorted(set(grp["sensitivity"].dropna().astype(str)))) if "sensitivity" in grp.columns else ""
                     accuracy_text    = ", ".join(sorted(set(grp["accuracy"].dropna().astype(str)))) if "accuracy" in grp.columns else ""
 
+                    # Whole-history A vs C
+                    n_adj  = hist_adj_counts.get((str(mode_name), str(check_class)), 0)
+                    n_chk  = hist_chk_counts.get((str(mode_name), str(check_class)), 0)
+                    n_tot  = n_adj + n_chk
+                    adj_pct = (n_adj / n_tot * 100) if n_tot > 0 else None
+
+                    # Classify into a quick label
+                    if n_tot == 0:
+                        label = "—"
+                    elif adj_pct >= 75:
+                        label = "🔧 Needs tuning"     # mostly adjusts
+                    elif adj_pct <= 25:
+                        label = "✅ Mostly verified"  # mostly checks
+                    else:
+                        label = "⚖️ Mixed"
+
                     rows.append({
                         "Check": False,
                         "Mode": mode_name,
@@ -1927,6 +1968,9 @@ elif page.endswith("IQS"):
                         "Boundaries": own_b,
                         "Reference Boundaries": ref_b,
                         "Count": len(grp),
+                        "Adj %": adj_pct,            # numeric (or None) for proper sort
+                        "A / C (history)": f"{n_adj} A · {n_chk} C",
+                        "Behaviour": label,
                         "Sensitivity": sensitivity_text,
                         "Accuracy": accuracy_text,
                     })
@@ -1939,22 +1983,35 @@ elif page.endswith("IQS"):
         if not adjusted_mode_table.empty:
             st.data_editor(
                 adjusted_mode_table,
-                use_container_width=True, height=320, hide_index=True,
+                use_container_width=True, height=340, hide_index=True,
                 column_config={
                     "Check": st.column_config.CheckboxColumn("✓", width="small"),
                     "Mode": st.column_config.TextColumn("Mode", width="medium"),
                     "Check Class": st.column_config.TextColumn("Check Class", width="small"),
                     "Boundaries": st.column_config.TextColumn("Boundaries", width="medium",
                         help="After-boundaries recorded for this grower + variety"),
-                    "Reference Boundaries": st.column_config.TextColumn("Reference Boundaries", width="large",
+                    "Reference Boundaries": st.column_config.TextColumn("Reference Boundaries", width="medium",
                         help="After-boundaries recorded for the same variety across all growers"),
-                    "Count": st.column_config.NumberColumn("Count", width="small"),
+                    "Count": st.column_config.NumberColumn("Count", width="small",
+                        help="Number of adjustments for this mode under the current filter"),
+                    "Adj %": st.column_config.ProgressColumn(
+                        "Adj %", width="small", format="%.0f%%", min_value=0, max_value=100,
+                        help="Adjustments ÷ (Adjustments + Checks) across the whole history. "
+                             "High = needs tuning; Low = mostly verified."
+                    ),
+                    "A / C (history)": st.column_config.TextColumn("A / C (history)", width="small",
+                        help="Total adjustments vs checks recorded in the whole dataset for this mode + class."),
+                    "Behaviour": st.column_config.TextColumn("Behaviour", width="small",
+                        help="🔧 Needs tuning = Adj ≥ 75%. ⚖️ Mixed = 25–75%. ✅ Mostly verified = Adj ≤ 25%."),
                     "Sensitivity": st.column_config.TextColumn("Sensitivity", width="small"),
                     "Accuracy": st.column_config.TextColumn("Accuracy", width="small"),
                 },
                 column_order=["Check", "Mode", "Check Class", "Boundaries",
-                              "Reference Boundaries", "Count", "Sensitivity", "Accuracy"],
-                disabled=["Mode","Check Class","Boundaries","Reference Boundaries","Count","Sensitivity","Accuracy"],
+                              "Reference Boundaries", "Count",
+                              "Adj %", "A / C (history)", "Behaviour",
+                              "Sensitivity", "Accuracy"],
+                disabled=["Mode","Check Class","Boundaries","Reference Boundaries","Count",
+                          "Adj %","A / C (history)","Behaviour","Sensitivity","Accuracy"],
                 key="adj_mode_editor"
             )
         else:
@@ -3268,14 +3325,21 @@ elif page.endswith("Training"):
             pending_df = tr_df[tr_df["status"] == "Pending"]
             if not pending_df.empty:
                 st.markdown('<div class="section-title">Pending Submissions — Action List</div>', unsafe_allow_html=True)
-                st.caption("Training submissions that have not yet been completed. Sort by oldest to find stuck items.")
+                st.caption("Training submissions that have not yet been completed. Sort by oldest to find stuck items. **Defects Trained** lists every defect tagged in the submission so you can trace what each pending item covers.")
                 today = pd.Timestamp.today().normalize()
                 pending_df = pending_df.copy()
                 pending_df["days_open"] = (today - pending_df["date_submit"]).dt.days
-                cols = [c for c in ["date_submit","variety","reference_dec","decfile_ver","decfile_type","defect_count","days_open","NOTES"] if c in pending_df.columns]
+                # Build a comma-separated string of defects per row
+                if "defects_list" in pending_df.columns:
+                    pending_df["defects_str"] = pending_df["defects_list"].apply(
+                        lambda items: ", ".join(items) if items else ""
+                    )
+                cols = [c for c in ["date_submit","variety","reference_dec","decfile_ver","decfile_type",
+                                    "defect_count","defects_str","days_open","NOTES"] if c in pending_df.columns]
                 disp = pending_df[cols].rename(columns={
                     "date_submit":"Submitted","variety":"Variety","reference_dec":"Ref Dec",
                     "decfile_ver":"Version","decfile_type":"Type","defect_count":"# Defects",
+                    "defects_str":"Defects Trained",
                     "days_open":"Days Open","NOTES":"Notes"
                 })
                 if "Submitted" in disp.columns:
@@ -3294,6 +3358,10 @@ elif page.endswith("Training"):
                 ver_counts.columns = ["decfile_ver","batches_used"]
                 xref = tr_df.merge(ver_counts, on="decfile_ver", how="left")
                 xref["batches_used"] = xref["batches_used"].fillna(0).astype(int)
+                if "defects_list" in xref.columns:
+                    xref["defects_str"] = xref["defects_list"].apply(
+                        lambda items: ", ".join(items) if items else ""
+                    )
 
                 trained_total = len(xref)
                 trained_used  = (xref["batches_used"] > 0).sum()
@@ -3310,10 +3378,12 @@ elif page.endswith("Training"):
                 with xc2:
                     top_used = xref[xref["batches_used"] > 0].sort_values("batches_used", ascending=False).head(15)
                     if not top_used.empty:
-                        cols = [c for c in ["decfile_ver","variety","date_complete","batches_used","defect_count"] if c in top_used.columns]
+                        cols = [c for c in ["decfile_ver","variety","date_complete","batches_used",
+                                            "defect_count","defects_str"] if c in top_used.columns]
                         disp_x = top_used[cols].rename(columns={
                             "decfile_ver":"Version","variety":"Variety","date_complete":"Completed",
-                            "batches_used":"Batches Run","defect_count":"# Defects"
+                            "batches_used":"Batches Run","defect_count":"# Defects",
+                            "defects_str":"Defects Trained"
                         })
                         if "Completed" in disp_x.columns:
                             disp_x["Completed"] = pd.to_datetime(disp_x["Completed"]).dt.strftime("%Y-%m-%d")
@@ -3323,10 +3393,15 @@ elif page.endswith("Training"):
 
             # ── Full record browser ───────────────────────────
             with st.expander("Browse all training records (filtered)"):
+                browse = tr_df.copy()
+                if "defects_list" in browse.columns:
+                    browse["defects_str"] = browse["defects_list"].apply(
+                        lambda items: ", ".join(items) if items else ""
+                    )
                 show_cols = [c for c in ["training_source","date_submit","date_complete","variety","reference_dec",
-                                         "decfile_ver","decfile_type","defect_count","turnaround_days",
-                                         "status","NOTES"] if c in tr_df.columns]
-                browse = tr_df[show_cols].copy()
+                                         "decfile_ver","decfile_type","defect_count","defects_str",
+                                         "turnaround_days","status","NOTES"] if c in browse.columns]
+                browse = browse[show_cols].copy()
                 for dc in ("date_submit","date_complete"):
                     if dc in browse.columns:
                         browse[dc] = pd.to_datetime(browse[dc]).dt.strftime("%Y-%m-%d")
@@ -3334,7 +3409,8 @@ elif page.endswith("Training"):
                     "training_source":"Source",
                     "date_submit":"Submitted","date_complete":"Completed","variety":"Variety",
                     "reference_dec":"Ref","decfile_ver":"Version","decfile_type":"Type",
-                    "defect_count":"# Defects","turnaround_days":"Turnaround (d)","status":"Status",
+                    "defect_count":"# Defects","defects_str":"Defects Trained",
+                    "turnaround_days":"Turnaround (d)","status":"Status",
                     "NOTES":"Notes"
                 })
                 st.dataframe(browse.sort_values("Submitted", ascending=False),
