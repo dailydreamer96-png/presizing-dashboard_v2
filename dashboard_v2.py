@@ -1,9 +1,16 @@
 import os
+import warnings
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+# Silence cosmetic pandas date-parsing warnings (mixed formats are handled
+# deliberately with fallbacks) so the console stays clean in production.
+warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
+warnings.filterwarnings("ignore", message=".*Could not infer format.*")
+warnings.filterwarnings("ignore", message=".*Parsing dates in.*")
 
 # ─────────────────────────────────────────────────────────────
 # PAGE CONFIG — Streamlit's sidebar is permanently hidden;
@@ -662,10 +669,33 @@ changes    = load_csv("changes_raw.csv")
 downtime   = load_csv("downtime_raw.csv")
 dec_file   = load_csv("dec_file_raw.csv")
 mode_order = load_csv("mode_order.csv")
+solenoids  = load_csv("solenoids_raw.csv")
 
 if runs is None:
-    st.error("runs_raw.csv not found.")
+    st.error(
+        "**runs_raw.csv not found.** This is the core data file the dashboard needs to start.\n\n"
+        "Place these CSVs in the same folder as the dashboard, then reload:\n"
+        "- `runs_raw.csv` (required)\n"
+        "- `batches_raw.csv`, `changes_raw.csv`, `downtime_raw.csv` (recommended)\n"
+        "- `dec_file_raw.csv`, `mode_order.csv`, `solenoids_raw.csv` (for Training / IQS / Solenoids tabs)"
+    )
     st.stop()
+
+# ─────────────────────────────────────────────────────────────
+# Shared date parser — handles mixed formats across all CSVs
+# (2024-03-06 / 26/01/2024 / 27.02.2024 etc.)
+# Defined early so every cleaning block below can use it.
+# ─────────────────────────────────────────────────────────────
+def _parse_mixed_date(s):
+    if pd.isna(s):
+        return pd.NaT
+    s = str(s).strip().replace(".", "/")
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return pd.to_datetime(s, format=fmt)
+        except (ValueError, TypeError):
+            continue
+    return pd.to_datetime(s, errors="coerce", dayfirst=True)
 
 # ─────────────────────────────────────────────────────────────
 # CLEAN MODE_ORDER — authoritative list of modes per variety
@@ -686,20 +716,80 @@ if mode_order is not None:
     mode_order = mode_order.dropna(subset=["variety", "mode"])
 
 # ─────────────────────────────────────────────────────────────
+# CLEAN SOLENOIDS — replacement & test history
+# Columns (with tolerance for slight name variations):
+#   date_replace        — when the solenoid was changed/checked
+#   solenoid_id         — unique identifier (e.g. S1, S2…)
+#   solenoid_issue      — fault category (can be comma-delimited)
+#   canal_number        — canal position (or "drop_test" for bench tests)
+#   lane_number         — lane 1 / 2 / 3
+#   click_site          — where the click happens (left / right / fine / both)
+#   recorded_site       — where the issue was recorded
+#   drop_test_mode      — short / normal (can be comma-delimited)
+#   status_solenoids    — reuse / faulty / hold / check
+# ─────────────────────────────────────────────────────────────
+if solenoids is not None and not solenoids.empty:
+    # Normalise possible alternative column names (best-effort fallback) ──
+    _sol_rename = {
+        "replace_date": "date_replace", "date_replaced": "date_replace",
+        "id": "solenoid_id", "solenoid": "solenoid_id",
+        "issue": "solenoid_issue", "solenoids_issue": "solenoid_issue",
+        "canal": "canal_number", "canal_no": "canal_number",
+        "lane": "lane_number", "lane_no": "lane_number",
+        "drop_test_method": "drop_test_mode", "test_method": "drop_test_mode",
+        "status": "status_solenoids", "solenoid_status": "status_solenoids",
+        "faulty_site": "click_site",
+    }
+    solenoids = solenoids.rename(columns={
+        k: v for k, v in _sol_rename.items() if k in solenoids.columns and v not in solenoids.columns
+    })
+
+    # Date — handle mixed formats just like dec_file
+    if "date_replace" in solenoids.columns:
+        solenoids["date_replace"] = solenoids["date_replace"].apply(_parse_mixed_date)
+
+    # Trim & lowercase categorical text columns; fix common typos
+    _str_cols = ["solenoid_id", "solenoid_issue", "canal_number", "click_site",
+                 "recorded_site", "drop_test_mode", "status_solenoids"]
+    for c in _str_cols:
+        if c in solenoids.columns:
+            solenoids[c] = (solenoids[c]
+                .fillna("").astype(str).str.strip()
+                .replace({"": pd.NA})
+            )
+    # Normalize the known typo: "doucle_click" → "double_click"
+    if "solenoid_issue" in solenoids.columns:
+        solenoids["solenoid_issue"] = (
+            solenoids["solenoid_issue"]
+                .astype(str)
+                .str.replace("doucle_click", "double_click", regex=False)
+        )
+
+    # Build issue_list: split comma-delimited issues into a Python list per row
+    if "solenoid_issue" in solenoids.columns:
+        solenoids["issue_list"] = (
+            solenoids["solenoid_issue"]
+                .fillna("").astype(str)
+                .apply(lambda s: [p.strip() for p in s.replace(";", ",").split(",") if p.strip()])
+        )
+    # Same for drop_test_mode
+    if "drop_test_mode" in solenoids.columns:
+        solenoids["test_mode_list"] = (
+            solenoids["drop_test_mode"]
+                .fillna("").astype(str)
+                .apply(lambda s: [p.strip() for p in s.replace(";", ",").split(",") if p.strip()])
+        )
+
+    # Mark whether this row is a bench drop-test (canal_number == "drop_test")
+    # vs an in-line canal replacement. Useful for filtering.
+    if "canal_number" in solenoids.columns:
+        solenoids["is_bench_test"] = (
+            solenoids["canal_number"].astype(str).str.lower() == "drop_test"
+        )
+
+# ─────────────────────────────────────────────────────────────
 # CLEAN DEC_FILE — training records
 # ─────────────────────────────────────────────────────────────
-def _parse_mixed_date(s):
-    """Handle 2024-03-06 / 26/01/2024 / 27.02.2024 etc."""
-    if pd.isna(s):
-        return pd.NaT
-    s = str(s).strip().replace(".", "/")
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
-        try:
-            return pd.to_datetime(s, format=fmt)
-        except (ValueError, TypeError):
-            continue
-    return pd.to_datetime(s, errors="coerce", dayfirst=True)
-
 if dec_file is not None:
     for col in ("date_submit", "date_complete"):
         if col in dec_file.columns:
@@ -864,7 +954,7 @@ nav_col1, nav_col2 = st.columns([5, 1])
 with nav_col1:
     page = st.radio(
         "Page",
-        ["📊  Summary", "🎯  IQS", "🍏  Quality", "👷  Operators", "🧠  Training", "🔎  Search"],
+        ["📊  Summary", "🎯  IQS", "🍏  Quality", "👷  Operators", "🧠  Training", "🔧  Solenoids", "🔎  Search"],
         label_visibility="collapsed",
         horizontal=True,
         key="nav_page",
@@ -1000,13 +1090,21 @@ if st.session_state.show_filters:
             selected_version = "All versions"
 
     elif page.endswith("Operators"):
-        f1, f2 = st.columns(2)
+        f1, f2, f3 = st.columns(3)
         ops_pre = runs.copy()
+        ops_pre["year"]        = ops_pre["run_date"].dt.year.astype("Int64")
         ops_pre["month_label"] = ops_pre["run_date"].dt.to_period("M").astype(str)
         with f1:
-            month_opts = sorted(ops_pre["month_label"].dropna().astype(str).unique(), reverse=True)
-            sel_op_month = st.selectbox("📅  Month", ["All months"] + month_opts, key="op_month")
+            year_opts = sorted(ops_pre["year"].dropna().unique().tolist(), reverse=True)
+            sel_op_year = st.selectbox("📅  Year", ["All years"] + [str(y) for y in year_opts], key="op_year")
         with f2:
+            # Scope months by selected year so the dropdown isn't overwhelming
+            month_pool = ops_pre
+            if sel_op_year != "All years":
+                month_pool = ops_pre[ops_pre["year"].astype(str) == sel_op_year]
+            month_opts = sorted(month_pool["month_label"].dropna().astype(str).unique(), reverse=True)
+            sel_op_month = st.selectbox("📅  Month", ["All months"] + month_opts, key="op_month")
+        with f3:
             variety_opts = sorted(ops_pre["variety"].dropna().astype(str).unique()) if "variety" in ops_pre.columns else []
             sel_op_var = st.selectbox("🍎  Variety", ["All varieties"] + variety_opts, key="op_var")
 
@@ -1035,6 +1133,33 @@ if st.session_state.show_filters:
             with f4:
                 sel_tr_status = st.selectbox("📋  Status", ["All", "Completed", "Pending"], key="tr_status")
 
+    elif page.endswith("Solenoids"):
+        if solenoids is None or solenoids.empty:
+            st.info("solenoids_raw.csv not found — Solenoids filters unavailable.")
+            sel_sol_status = "All statuses"; sel_sol_lane = "All lanes"
+            sel_sol_issue = "All issues"; sol_search_q = ""
+        else:
+            fa, fb, fc, fd = st.columns(4)
+            with fa:
+                sol_search_q = st.text_input(
+                    "🔎  Solenoid ID / Canal",
+                    placeholder="e.g. S5 or 25",
+                    key="sol_search_q",
+                )
+            with fb:
+                status_opts = sorted(solenoids["status_solenoids"].dropna().astype(str).unique().tolist()) \
+                    if "status_solenoids" in solenoids.columns else []
+                sel_sol_status = st.selectbox("📋  Status", ["All statuses"] + status_opts, key="sol_status")
+            with fc:
+                lane_opts = sorted(solenoids["lane_number"].dropna().astype(str).unique().tolist()) \
+                    if "lane_number" in solenoids.columns else []
+                sel_sol_lane = st.selectbox("🛤️  Lane", ["All lanes"] + lane_opts, key="sol_lane")
+            with fd:
+                issue_opts = []
+                if "issue_list" in solenoids.columns:
+                    issue_opts = sorted({i for items in solenoids["issue_list"] for i in (items or [])})
+                sel_sol_issue = st.selectbox("⚠️  Issue", ["All issues"] + issue_opts, key="sol_issue")
+
     elif page.endswith("Search"):
         s1, s2 = st.columns([3, 1])
         with s1:
@@ -1047,7 +1172,7 @@ if st.session_state.show_filters:
         with s2:
             search_scope = st.selectbox(
                 "Where",
-                ["All sources", "Runs", "Batches", "IQS Changes", "Downtime", "Training"],
+                ["All sources", "Runs", "Batches", "IQS Changes", "Downtime", "Training", "Solenoids"],
                 key="search_scope",
             )
 
@@ -1097,13 +1222,19 @@ else:
         selected_mode_grower = st.session_state.get("m_grower", "All growers")
         selected_version = st.session_state.get("m_ver", "All versions")
     elif page.endswith("Operators"):
+        sel_op_year  = st.session_state.get("op_year", "All years")
         sel_op_month = st.session_state.get("op_month", "All months")
-        sel_op_var = st.session_state.get("op_var", "All varieties")
+        sel_op_var   = st.session_state.get("op_var", "All varieties")
     elif page.endswith("Training"):
         sel_tr_year = st.session_state.get("tr_year", "All years")
         sel_tr_variety = st.session_state.get("tr_variety", "All varieties")
         sel_tr_status = st.session_state.get("tr_status", "All")
         sel_tr_source = st.session_state.get("tr_source", "All sources")
+    elif page.endswith("Solenoids"):
+        sol_search_q   = st.session_state.get("sol_search_q", "")
+        sel_sol_status = st.session_state.get("sol_status", "All statuses")
+        sel_sol_lane   = st.session_state.get("sol_lane", "All lanes")
+        sel_sol_issue  = st.session_state.get("sol_issue", "All issues")
     elif page.endswith("Search"):
         search_query = st.session_state.get("search_q", "")
         search_scope = st.session_state.get("search_scope", "All sources")
@@ -2615,7 +2746,10 @@ elif page.endswith("Operators"):
     has_quality  = "operator_quality"  in ops_df.columns
 
     # Filters
+    ops_df["year"]        = ops_df["run_date"].dt.year.astype("Int64")
     ops_df["month_label"] = ops_df["run_date"].dt.to_period("M").astype(str)
+    if sel_op_year != "All years":
+        ops_df = ops_df[ops_df["year"].astype(str) == sel_op_year]
     if sel_op_month != "All months":
         ops_df = ops_df[ops_df["month_label"] == sel_op_month]
     if sel_op_var != "All varieties" and "variety" in ops_df.columns:
@@ -2728,7 +2862,10 @@ elif page.endswith("Operators"):
         st.caption("Total downtime hours per day for the selected period — reveals which days lost the most production.")
         if downtime is not None and "run_date" in downtime.columns:
             dt_in = downtime.dropna(subset=["run_date"]).copy()
+            dt_in["year"]        = dt_in["run_date"].dt.year.astype("Int64")
             dt_in["month_label"] = dt_in["run_date"].dt.to_period("M").astype(str)
+            if sel_op_year != "All years":
+                dt_in = dt_in[dt_in["year"].astype(str) == sel_op_year]
             if sel_op_month != "All months":
                 dt_in = dt_in[dt_in["month_label"] == sel_op_month]
             if not dt_in.empty:
@@ -3419,6 +3556,219 @@ elif page.endswith("Training"):
 
 
 # ═══════════════════════════════════════════════════════════════
+# SOLENOIDS PAGE — replacement & test history
+# ═══════════════════════════════════════════════════════════════
+elif page.endswith("Solenoids"):
+    st.markdown('<div class="section-title">Solenoid Replacement & Test History</div>', unsafe_allow_html=True)
+    st.caption(
+        "Every recorded solenoid change or check. Search by **solenoid ID** to see that unit's full history, "
+        "or by **canal number** to see everything that's happened on a canal — repeat issues on the same canal "
+        "usually point to a deeper mechanical problem, not just the solenoid."
+    )
+
+    if solenoids is None or solenoids.empty:
+        st.info("solenoids_raw.csv not found. Place it in the same directory as the dashboard and reload.")
+    else:
+        sol = solenoids.copy()
+
+        # ── Apply filters ─────────────────────────────────────
+        q = (sol_search_q or "").strip().lower()
+        if q:
+            mask = pd.Series(False, index=sol.index)
+            for c in ["solenoid_id", "canal_number"]:
+                if c in sol.columns:
+                    mask |= sol[c].astype(str).str.lower().str.contains(q, regex=False, na=False)
+            sol = sol[mask]
+        if sel_sol_status != "All statuses" and "status_solenoids" in sol.columns:
+            sol = sol[sol["status_solenoids"].astype(str) == sel_sol_status]
+        if sel_sol_lane != "All lanes" and "lane_number" in sol.columns:
+            sol = sol[sol["lane_number"].astype(str) == sel_sol_lane]
+        if sel_sol_issue != "All issues" and "issue_list" in sol.columns:
+            sol = sol[sol["issue_list"].apply(lambda items: sel_sol_issue in (items or []))]
+
+        if sol.empty:
+            st.warning("No solenoid records match the current filters.")
+        else:
+            # ── KPI strip ─────────────────────────────────────
+            n_records   = len(sol)
+            n_units     = sol["solenoid_id"].nunique() if "solenoid_id" in sol.columns else 0
+            n_faulty    = (sol["status_solenoids"].astype(str) == "faulty").sum() if "status_solenoids" in sol.columns else 0
+            n_reuse     = (sol["status_solenoids"].astype(str) == "reuse").sum() if "status_solenoids" in sol.columns else 0
+            # Canals excluding bench tests
+            real_canals = sol[~sol.get("is_bench_test", pd.Series(False, index=sol.index))] \
+                if "is_bench_test" in sol.columns else sol
+            n_canals    = real_canals["canal_number"].nunique() if "canal_number" in real_canals.columns else 0
+
+            k1, k2, k3, k4 = st.columns(4)
+            k1.markdown(kpi_html("Records", f"{n_records:,}",
+                                 "in current view"), unsafe_allow_html=True)
+            k2.markdown(kpi_html("Distinct Solenoids", f"{n_units:,}"), unsafe_allow_html=True)
+            k3.markdown(kpi_html("Canals Affected", f"{n_canals:,}",
+                                 "excludes bench drop-tests"), unsafe_allow_html=True)
+            k4.markdown(kpi_html("Faulty / Reuse", f"{n_faulty} / {n_reuse}",
+                                 "current status mix"), unsafe_allow_html=True)
+
+            # ── If searching a single solenoid or canal, show a focused history ──
+            if q:
+                st.markdown("---")
+                st.markdown(
+                    f'<div class="section-title">History for “{sol_search_q.strip()}”</div>',
+                    unsafe_allow_html=True
+                )
+                hist = sol.sort_values("date_replace", ascending=False) if "date_replace" in sol.columns else sol
+                hist_cols = [c for c in ["date_replace","solenoid_id","canal_number","lane_number",
+                                         "solenoid_issue","click_site","recorded_site",
+                                         "drop_test_mode","status_solenoids"] if c in hist.columns]
+                hist_disp = hist[hist_cols].copy()
+                if "date_replace" in hist_disp.columns:
+                    hist_disp["date_replace"] = pd.to_datetime(hist_disp["date_replace"]).dt.strftime("%Y-%m-%d")
+                hist_disp = hist_disp.rename(columns={
+                    "date_replace":"Date","solenoid_id":"Solenoid","canal_number":"Canal",
+                    "lane_number":"Lane","solenoid_issue":"Issue","click_site":"Click Site",
+                    "recorded_site":"Recorded Site","drop_test_mode":"Drop Test","status_solenoids":"Status"
+                })
+                st.dataframe(hist_disp, use_container_width=True, hide_index=True,
+                             height=min(420, 60 + 36 * min(len(hist_disp), 12)))
+
+                # Quick narrative if it's a single canal with repeat issues
+                if "canal_number" in sol.columns and sol["canal_number"].nunique() == 1:
+                    canal_val = sol["canal_number"].iloc[0]
+                    if len(sol) > 1:
+                        st.markdown(
+                            f'<div class="alert-card">⚠️ Canal <b>{canal_val}</b> has <b>{len(sol)}</b> recorded solenoid events — '
+                            f'a recurring problem here may indicate a mechanical issue beyond the solenoid itself.</div>',
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.markdown(
+                            f'<div class="good-card">Canal <b>{canal_val}</b> has a single recorded event.</div>',
+                            unsafe_allow_html=True
+                        )
+
+            st.markdown("---")
+
+            # ── Repeat-offender canals ────────────────────────
+            st.markdown('<div class="section-title">Repeat-Offender Canals</div>', unsafe_allow_html=True)
+            st.caption("Canals with more than one recorded solenoid event — these deserve a closer mechanical inspection. Bench drop-tests are excluded.")
+            if "canal_number" in real_canals.columns and not real_canals.empty:
+                canal_counts = (real_canals.groupby("canal_number")
+                                            .size().reset_index(name="events")
+                                            .sort_values("events", ascending=False))
+                repeat_canals = canal_counts[canal_counts["events"] >= 2]
+                if not repeat_canals.empty:
+                    rc_l, rc_r = st.columns([1, 1])
+                    with rc_l:
+                        chart_rc = repeat_canals.sort_values("events", ascending=True)
+                        chart_rc["canal_label"] = "Canal " + chart_rc["canal_number"].astype(str)
+                        fig_rc = px.bar(chart_rc, x="events", y="canal_label", orientation="h",
+                                        text="events", color_discrete_sequence=[ROSE],
+                                        labels={"events":"Events","canal_label":"Canal"})
+                        fig_rc.update_traces(textposition="outside",
+                                             textfont=dict(family="DM Mono, monospace", size=12, color="#0f1d35"),
+                                             cliponaxis=False, name="")
+                        apply_plot_theme(fig_rc, height=max(240, 36 * len(repeat_canals)))
+                        fig_rc.update_layout(showlegend=False)
+                        fig_rc.update_xaxes(range=[0, repeat_canals["events"].max() * 1.18])
+                        st.plotly_chart(fig_rc, use_container_width=True)
+                    with rc_r:
+                        # Detail of each repeat canal
+                        detail_rows = []
+                        for _, rr in repeat_canals.iterrows():
+                            canal = rr["canal_number"]
+                            sub = real_canals[real_canals["canal_number"] == canal]
+                            issues = sorted({i for items in sub.get("issue_list", pd.Series([[]]*len(sub)))
+                                             for i in (items or [])})
+                            detail_rows.append({
+                                "Canal": str(canal),
+                                "Events": int(rr["events"]),
+                                "Lanes": ", ".join(sorted(sub["lane_number"].dropna().astype(str).unique())) if "lane_number" in sub.columns else "",
+                                "Issues Seen": ", ".join(issues) if issues else "—",
+                            })
+                        st.dataframe(pd.DataFrame(detail_rows),
+                                     use_container_width=True, hide_index=True,
+                                     height=min(300, 60 + 36 * min(len(detail_rows), 6)))
+                else:
+                    st.success("No canal has more than one recorded event in the current view.")
+            else:
+                st.info("No canal data available.")
+
+            st.markdown("---")
+
+            # ── Issue + status breakdown ──────────────────────
+            br_l, br_r = st.columns(2)
+            with br_l:
+                st.markdown('<div class="section-title">Most Common Issues</div>', unsafe_allow_html=True)
+                st.caption("Across all solenoid events in the current view.")
+                if "issue_list" in sol.columns:
+                    all_issues = [i for items in sol["issue_list"] for i in (items or [])]
+                    if all_issues:
+                        ic = pd.Series(all_issues).value_counts().reset_index()
+                        ic.columns = ["Issue","Count"]
+                        ic_asc = ic.sort_values("Count", ascending=True)
+                        fig_ic = px.bar(ic_asc, x="Count", y="Issue", orientation="h",
+                                        text="Count", color_discrete_sequence=[BLUE])
+                        fig_ic.update_traces(textposition="outside",
+                                             textfont=dict(family="DM Mono, monospace", size=12, color="#0f1d35"),
+                                             cliponaxis=False, name="")
+                        apply_plot_theme(fig_ic, height=max(260, 32 * len(ic_asc)))
+                        fig_ic.update_layout(showlegend=False)
+                        fig_ic.update_xaxes(range=[0, ic_asc["Count"].max() * 1.18])
+                        st.plotly_chart(fig_ic, use_container_width=True)
+                    else:
+                        st.info("No issue data.")
+
+            with br_r:
+                st.markdown('<div class="section-title">Status Mix</div>', unsafe_allow_html=True)
+                st.caption("reuse = back in service · faulty = scrapped · hold / check = awaiting decision.")
+                if "status_solenoids" in sol.columns:
+                    sc = sol["status_solenoids"].dropna().astype(str).value_counts().reset_index()
+                    sc.columns = ["Status","Count"]
+                    status_colors = {"reuse": EMERALD, "faulty": ROSE, "hold": AMBER, "check": BLUE}
+                    fig_sc = px.pie(sc, names="Status", values="Count", hole=0.55,
+                                    color="Status", color_discrete_map=status_colors)
+                    fig_sc.update_traces(textposition="outside", textinfo="label+value",
+                                         hovertemplate="%{label}: %{value}<extra></extra>")
+                    apply_plot_theme(fig_sc, height=300)
+                    fig_sc.update_layout(showlegend=False)
+                    st.plotly_chart(fig_sc, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Replacement timeline ──────────────────────────
+            st.markdown('<div class="section-title">Replacement Activity Over Time</div>', unsafe_allow_html=True)
+            st.caption("How many solenoid events were recorded on each date — spikes may line up with a bad batch of parts or a line problem.")
+            if "date_replace" in sol.columns and sol["date_replace"].notna().any():
+                tl = (sol.dropna(subset=["date_replace"])
+                         .groupby(sol["date_replace"].dt.normalize())
+                         .size().reset_index(name="events").rename(columns={"date_replace":"day"}))
+                fig_tl = px.bar(tl, x="day", y="events", color_discrete_sequence=[BLUE],
+                                labels={"day":"Date","events":"Events"})
+                fig_tl.update_traces(hovertemplate="%{x|%a %d %b %Y}<br>%{y} events<extra></extra>", name="")
+                apply_plot_theme(fig_tl, height=300)
+                fig_tl.update_layout(showlegend=False, xaxis_title=None)
+                st.plotly_chart(fig_tl, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Full record table ─────────────────────────────
+            st.markdown('<div class="section-title">All Solenoid Records (current view)</div>', unsafe_allow_html=True)
+            full_cols = [c for c in ["date_replace","solenoid_id","canal_number","lane_number",
+                                     "solenoid_issue","click_site","recorded_site",
+                                     "drop_test_mode","status_solenoids"] if c in sol.columns]
+            full_disp = sol[full_cols].copy()
+            if "date_replace" in full_disp.columns:
+                full_disp["date_replace"] = pd.to_datetime(full_disp["date_replace"]).dt.strftime("%Y-%m-%d")
+            full_disp = full_disp.rename(columns={
+                "date_replace":"Date","solenoid_id":"Solenoid","canal_number":"Canal",
+                "lane_number":"Lane","solenoid_issue":"Issue","click_site":"Click Site",
+                "recorded_site":"Recorded Site","drop_test_mode":"Drop Test","status_solenoids":"Status"
+            })
+            sort_col = "Date" if "Date" in full_disp.columns else full_disp.columns[0]
+            st.dataframe(full_disp.sort_values(sort_col, ascending=False),
+                         use_container_width=True, hide_index=True, height=400)
+
+
+# ═══════════════════════════════════════════════════════════════
 # SEARCH PAGE  — keyword lookup across runs, batches, IQS changes,
 # downtime, and training records.
 # ═══════════════════════════════════════════════════════════════
@@ -3624,12 +3974,30 @@ elif page.endswith("Search"):
                 results.append(("Training", disp.sort_values("Submitted", ascending=False)
                                 if "Submitted" in disp.columns else disp, len(t_hit)))
 
+        # ── Solenoids ─────────────────────────────────────────
+        if scope in ("All sources", "Solenoids") and solenoids is not None and not solenoids.empty:
+            scols = [c for c in ["date_replace","solenoid_id","canal_number","lane_number",
+                                 "solenoid_issue","click_site","recorded_site",
+                                 "drop_test_mode","status_solenoids"] if c in solenoids.columns]
+            s_hit = _row_contains(solenoids, ql, scols)
+            if not s_hit.empty:
+                disp = s_hit[scols].copy()
+                if "date_replace" in disp.columns:
+                    disp["date_replace"] = pd.to_datetime(disp["date_replace"]).dt.strftime("%Y-%m-%d")
+                disp = disp.rename(columns={
+                    "date_replace":"Date","solenoid_id":"Solenoid","canal_number":"Canal",
+                    "lane_number":"Lane","solenoid_issue":"Issue","click_site":"Click Site",
+                    "recorded_site":"Recorded Site","drop_test_mode":"Drop Test","status_solenoids":"Status"
+                })
+                results.append(("Solenoids", disp.sort_values("Date", ascending=False)
+                                if "Date" in disp.columns else disp, len(s_hit)))
+
         # ── Render ────────────────────────────────────────────
         total = sum(c for _, _, c in results)
         if total == 0:
             st.warning(f"No matches found for **{q}**.")
         else:
-            cols_strip = st.columns(min(6, max(1, len(results) + 1)))
+            cols_strip = st.columns(min(7, max(1, len(results) + 1)))
             cols_strip[0].markdown(kpi_html("Total Matches", f"{total:,}",
                                             f"across {len(results)} dataset(s)"),
                                    unsafe_allow_html=True)
