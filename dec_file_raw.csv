@@ -91,7 +91,7 @@ bravo,2025-08-08,13/08/2025,2964,crack_stem,san_jose,russets_stem,,,,,,,,,,,J005
 pink_lady,2025-12-08,26/08/2025,2965,russets Net,san_jose(clean),sunburn(clean),calyx_minor,sunburn,san_jose,punctures,sunburn_major,insect,,,,,O015,PinkLadyPLAU_PerformanceGoodLot,
 bravo,14/08/2025,24/09/2025,2970,shrivel,crack_calyx,holes major,sunburn,crack_stem(leaf),green(clean),russets_stem(clean),russets_stem(clean),san_jose(clean),decay,sunburn(clean),browning,leaf,J011,BravoPLAU_PerformMM,
 gala,2025-08-14,2025-09-10,2971,shrivel,decay(leaf),decay(clean),leaf(russets),leaf(clean),holes_major,hails,,,,,,,O004,BlushPLAU_PerformSundown,
-kanzi,2025-08-20,2026-03-10,2973,russets_stem(clean),decay(leaf),leaf(clean),browning,crack_stem(clean),,,,,,,,,N001,KanziPLAU_PerformanceGoodLot,
+kanzi,2025-08-20,2026-03-10,2973,russets_stem(clean),decay(leaf),leaf(clean),browning,crack_stem(clean),Clean,decay_stem(leaf),san_jose,,,,,,N001,KanziPLAU_PerformanceGoodLot,
 packham,2025-09-08,2025-11-26,3016,sunburn,scald,shrivel,major,holes_major,decay,decay_major,decay_stem,bruises,sooty_mold,,,,O011,PearPLAU_Performance,
 pink_lady,2025-10-09,22/10/2025,3028,russets_stem(clean),leaf(decay),hails,Injury (leaf),sunburn_major,decay_dark,,,,,,,,O019,PinkLadyPLAU_PerformanceGoodLot,
 rico,2025-09-24,2025-12-09,3064,decay,decay(leaf),bruises,shrivel,,soft,,,,,,,,F005,RicoPearPLAU_Performance,
@@ -109,3 +109,4 @@ pink_lady,2026-04-20,2026-05-01,3472,,leaf,,,,,,,,,,,,O022,PinkLadyPLAU_Performa
 bravo,2026-04-22,,3480,green,sunburn_major,hails_major,cuts,san_jose,decay,crack_calyx,leaf,stem buds,,,,,,,
 gala,2026-05-12,,3502,leaf,major,,,,,,,,,,,,,,
 granny_smith,2026-05-12,2026-05-13,ifa,watercore_ifa,,,,,,,,,,,,,,,
+kanzi,2026-05-14,,3504,leaf,leaf(clean),,,,,,,,,,,,,,

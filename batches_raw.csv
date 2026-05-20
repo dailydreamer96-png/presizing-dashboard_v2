@@ -169,6 +169,13 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8668,sagar ardmona,granny_smith,2026-04-02,2026-04-08,,Z011,russets,sunburn,major,no,no,0,
 8671,plunketts,pink_lady,2026-04-28,2026-04-28,P8,O022,lenticel,holes,bruises,no,no,40,
 8672,plunketts,pink_lady,2026-04-29,2026-04-30,P12,O022,insect,bruises,color_skin,no,no,40,
-,,,,,,,,,,,,,
+8673,plunketts,pink_lady,2026-04-15,2026-04-27,P18,O022,insect,dirt_skin,,no,no,40,
+8674,plunketts,pink_lady,2026-04-24,2026-05-01,"P24,P25",O022,lenticel,bruises,decay,no,no,40,
+8675,bhangu,pink_lady,2026-04-25,2026-04-28,,O002,lenticel,calyx_minor,holes,no,no,40,
+8676,ardrossan,kanzi,2026-04-15,2026-04-16,gocup,N003,average_stem,puntures,spots,yes,no,0,
+8677,ardrossan,pink_lady,2026-05-05,2026-05-06,woodburn,O022,leaf,color_good,,yes,yes,35,"remove decay_lbd and stem decay_rgb mode, it is reading leaf"
+8678,ardrossan,pink_lady,2026-05-06,2026-05-06,gocup,O022,bruises,,,no,yes,35,"remove decay_lbd and stem decay_rgb mode, clean fruit misread"
+8681,sagar ardmona,granny_smith,2026-04-02,2026-04-08,,Z011,blush,sunburn,major,no,no,0,applied new iFA watercore_007
+8682,sagar_produce,granny_smith,2026-04-09,2026-04-09,,Z011,sunburn,blush,,no,no,0,
 ,,,,,,,,,,,,,
 ,,,,,,,,,,,,,
