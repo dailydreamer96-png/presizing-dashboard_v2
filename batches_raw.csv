@@ -177,5 +177,15 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8678,ardrossan,pink_lady,2026-05-06,2026-05-06,gocup,O022,bruises,,,no,yes,35,"remove decay_lbd and stem decay_rgb mode, clean fruit misread"
 8681,sagar ardmona,granny_smith,2026-04-02,2026-04-08,,Z011,blush,sunburn,major,no,no,0,applied new iFA watercore_007
 8682,sagar_produce,granny_smith,2026-04-09,2026-04-09,,Z011,sunburn,blush,,no,no,0,
+8686,ardrossan,kanzi,2026-04-14,2026-04-21,ardossan,N003,average_stem,lenticel,spots,no,no,0,
+8687,ardrossan,kanzi,2026-04-15,2026-04-16,gocup,N003,average_stem,punctures,,yes,no,0,
+8690,bhangu,pink_lady,2026-05-01,2026-05-01,,O022,scab,limrubs,calyx_minor,no,no,35,
+8691,plunketts,pink_lady,2026-04-20,2026-04-21,P07,O022,holes,limrubs,insect,no,no,35,
+8692,bundara,pink_lady,2026-05-08,2026-05-08,B19,O022,lenticel,calyx_minor,punctures,yes,no,35,
+8693,pottenger,pink_lady,2026-05-07,2026-05-08,,O022,bruises,sunburn_minor,leaf,yes,yes,35,start premium after 35th bins from Andrew
+8697,paganfield,pink_lady,2026-05-02,2026-05-02,,O022,bruises,sunburn_major,,yes,yes,35,
+8699,adm_farm,pink_lady,2026-05-01,2026-05-20,,O022,lenticel,sunburn_major,holes_major,yes,yes,35,chemical_burns samples collected
+8671,plunketts,pink_lady,2026-04-28,2026-04-28,,Z011,sunburn,russets,marks_skin,no,no,0,
+,,,,,,,,,,,,,
 ,,,,,,,,,,,,,
 ,,,,,,,,,,,,,

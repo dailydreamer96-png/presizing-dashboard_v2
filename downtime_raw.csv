@@ -27,3 +27,6 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-05-14,T192,09:55,10:12,0.28,tours,"from melbourne leadership course, waiting to smoko"
 2026-05-16,T194,07:00,07:17,0.28,settings,"waiting on Andrew put on the list, we eventually use the previous one that we found"
 2026-05-20,T196,08:00,09:18,1.3,bin_matic,power box crushed? Cover fell of and crushed when the fork turned
+2026-05-21,T202,09:41,09:50,0.15,ifa,Blue checking on lane 1 ifa as no readings
+2026-05-21,T207,09:41,09:45,0.07,ifa,Blue replaced a new cable
+2026-05-21,T207,11:13,11:20,0.12,flumes_full,bin stuck at SFU hence flumes full
