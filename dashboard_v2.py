@@ -954,7 +954,8 @@ nav_col1, nav_col2 = st.columns([5, 1])
 with nav_col1:
     page = st.radio(
         "Page",
-        ["📊  Summary", "🎯  IQS", "🍏  Quality", "👷  Operators", "🧠  Training", "🔧  Solenoids", "🔎  Search"],
+        ["📊  Summary", "🎯  IQS", "🍏  Quality", "👷  Operators",
+         "🌾  Grower", "🧠  Training", "🔧  Solenoids", "🗂️  Explorer", "🔎  Search"],
         label_visibility="collapsed",
         horizontal=True,
         key="nav_page",
@@ -1108,6 +1109,43 @@ if st.session_state.show_filters:
             variety_opts = sorted(ops_pre["variety"].dropna().astype(str).unique()) if "variety" in ops_pre.columns else []
             sel_op_var = st.selectbox("🍎  Variety", ["All varieties"] + variety_opts, key="op_var")
 
+    elif page.endswith("Grower"):
+        # Grower picker drives the whole page
+        grower_list = sorted(runs["grower"].dropna().astype(str).unique()) if "grower" in runs.columns else []
+        gf1, gf2, gf3 = st.columns([2, 1, 1])
+        with gf1:
+            sel_gr_grower = st.selectbox(
+                "🌾  Grower",
+                grower_list if grower_list else ["(no growers found)"],
+                key="gr_grower",
+            )
+        with gf2:
+            yr_opts = sorted(runs["run_date"].dt.year.dropna().astype(int).unique(), reverse=True) \
+                      if "run_date" in runs.columns else []
+            sel_gr_year = st.selectbox("📅  Year", ["All years"] + [str(y) for y in yr_opts], key="gr_year")
+        with gf3:
+            var_opts_g = sorted(runs["variety"].dropna().astype(str).unique()) if "variety" in runs.columns else []
+            sel_gr_variety = st.selectbox("🍎  Variety", ["All varieties"] + var_opts_g, key="gr_variety")
+
+    elif page.endswith("Explorer"):
+        ef1, ef2, ef3, ef4 = st.columns(4)
+        with ef1:
+            ex_query = st.text_input(
+                "🔎  Free-text search",
+                placeholder="run ID, grower, batch, notes…",
+                key="ex_query",
+            )
+        with ef2:
+            yr_opts_e = sorted(runs["run_date"].dt.year.dropna().astype(int).unique(), reverse=True) \
+                        if "run_date" in runs.columns else []
+            sel_ex_year = st.selectbox("📅  Year", ["All years"] + [str(y) for y in yr_opts_e], key="ex_year")
+        with ef3:
+            var_opts_e = sorted(runs["variety"].dropna().astype(str).unique()) if "variety" in runs.columns else []
+            sel_ex_variety = st.selectbox("🍎  Variety", ["All varieties"] + var_opts_e, key="ex_variety")
+        with ef4:
+            gr_opts_e = sorted(runs["grower"].dropna().astype(str).unique()) if "grower" in runs.columns else []
+            sel_ex_grower = st.selectbox("🌾  Grower", ["All growers"] + gr_opts_e, key="ex_grower")
+
     elif page.endswith("Training"):
         if dec_file is None or dec_file.empty:
             st.info("dec_file_raw.csv not found — Training filters unavailable.")
@@ -1225,6 +1263,15 @@ else:
         sel_op_year  = st.session_state.get("op_year", "All years")
         sel_op_month = st.session_state.get("op_month", "All months")
         sel_op_var   = st.session_state.get("op_var", "All varieties")
+    elif page.endswith("Grower"):
+        sel_gr_grower  = st.session_state.get("gr_grower",  None)
+        sel_gr_year    = st.session_state.get("gr_year",    "All years")
+        sel_gr_variety = st.session_state.get("gr_variety", "All varieties")
+    elif page.endswith("Explorer"):
+        ex_query        = st.session_state.get("ex_query", "")
+        sel_ex_year     = st.session_state.get("ex_year",     "All years")
+        sel_ex_variety  = st.session_state.get("ex_variety",  "All varieties")
+        sel_ex_grower   = st.session_state.get("ex_grower",   "All growers")
     elif page.endswith("Training"):
         sel_tr_year = st.session_state.get("tr_year", "All years")
         sel_tr_variety = st.session_state.get("tr_variety", "All varieties")
@@ -2147,6 +2194,208 @@ elif page.endswith("IQS"):
             )
         else:
             st.info("No adjusted mode data.")
+
+        st.markdown("---")
+
+        # ════════════════════════════════════════════════════════
+        # BIG BOUNDARY CHANGES
+        # ════════════════════════════════════════════════════════
+        st.markdown('<div class="section-title">Big Boundary Changes</div>', unsafe_allow_html=True)
+        st.caption(
+            "**Big change** = (a) the mode went from **0 → any value** (mode wasn't sorting anything, now it is), "
+            "(b) any value → **0** (mode stopped sorting), or (c) a large jump in either direction "
+            "(default threshold = 100). These are the moments the line behaviour shifts the most — "
+            "review them to make sure the change was intended."
+        )
+
+        # Pull the working pool — filtered_mode already respects variety/grower filters
+        # (when "All growers" is picked, it pools all growers for the selected variety,
+        # which is exactly what we want for a variety-level view).
+        bb_pool = filtered_mode.copy()
+        if not bb_pool.empty and "boundary_before" in bb_pool.columns and "boundary_after" in bb_pool.columns:
+            bb_pool["bb"] = pd.to_numeric(bb_pool["boundary_before"], errors="coerce")
+            bb_pool["ba"] = pd.to_numeric(bb_pool["boundary_after"],  errors="coerce")
+            bb_valid = bb_pool.dropna(subset=["bb","ba"]).copy()
+            bb_valid["delta"] = bb_valid["ba"] - bb_valid["bb"]
+            bb_valid["delta_abs"] = bb_valid["delta"].abs()
+
+            # Threshold slider — user-tunable so they can dial up/down
+            bc1, bc2 = st.columns([1, 3])
+            with bc1:
+                jump_threshold = st.number_input(
+                    "Jump threshold",
+                    min_value=10, max_value=1000, value=100, step=10,
+                    key="iqs_jump_threshold",
+                    help="Any change whose absolute delta is at least this big is flagged as a 'big jump'."
+                )
+
+            # Build the flag categories
+            def _classify(row):
+                bb, ba = row["bb"], row["ba"]
+                if bb == 0 and ba > 0:
+                    return "🟢 Started sorting (0 → value)"
+                if ba == 0 and bb > 0:
+                    return "🔴 Stopped sorting (value → 0)"
+                if row["delta_abs"] >= jump_threshold:
+                    if row["delta"] > 0:
+                        return "🔼 Big jump up"
+                    else:
+                        return "🔽 Big drop down"
+                return ""
+            bb_valid["change_type"] = bb_valid.apply(_classify, axis=1)
+            big_changes = bb_valid[bb_valid["change_type"] != ""].copy()
+
+            # KPI strip
+            n_total = len(big_changes)
+            n_started = (big_changes["change_type"] == "🟢 Started sorting (0 → value)").sum()
+            n_stopped = (big_changes["change_type"] == "🔴 Stopped sorting (value → 0)").sum()
+            n_jumps   = ((big_changes["change_type"] == "🔼 Big jump up") |
+                         (big_changes["change_type"] == "🔽 Big drop down")).sum()
+
+            bk1, bk2, bk3, bk4 = st.columns(4)
+            bk1.markdown(kpi_html("Big Changes", f"{n_total:,}",
+                                  "in current filter scope"), unsafe_allow_html=True)
+            bk2.markdown(kpi_html("Started Sorting", f"{n_started:,}",
+                                  "0 → value (mode came online)",
+                                  "up" if n_started else "neu"), unsafe_allow_html=True)
+            bk3.markdown(kpi_html("Stopped Sorting", f"{n_stopped:,}",
+                                  "value → 0 (mode went silent)",
+                                  "down" if n_stopped else "neu"), unsafe_allow_html=True)
+            bk4.markdown(kpi_html("Big Jumps", f"{n_jumps:,}",
+                                  f"|Δ| ≥ {int(jump_threshold)}"), unsafe_allow_html=True)
+
+            if not big_changes.empty:
+                bc_l, bc_r = st.columns([1, 1.4])
+
+                with bc_l:
+                    # Change-type breakdown chart
+                    ct_counts = big_changes["change_type"].value_counts().reset_index()
+                    ct_counts.columns = ["Type", "Count"]
+                    ct_colors = {
+                        "🟢 Started sorting (0 → value)": EMERALD,
+                        "🔴 Stopped sorting (value → 0)": ROSE,
+                        "🔼 Big jump up": BLUE,
+                        "🔽 Big drop down": AMBER,
+                    }
+                    fig_ct = px.bar(ct_counts.sort_values("Count", ascending=True),
+                                    x="Count", y="Type", orientation="h",
+                                    text="Count", color="Type",
+                                    color_discrete_map=ct_colors)
+                    fig_ct.update_traces(textposition="outside",
+                                         textfont=dict(family="DM Mono, monospace", size=12, color="#0f1d35"),
+                                         cliponaxis=False)
+                    apply_plot_theme(fig_ct, height=max(220, 50 * len(ct_counts)))
+                    fig_ct.update_layout(showlegend=False)
+                    fig_ct.update_xaxes(range=[0, ct_counts["Count"].max() * 1.18])
+                    st.plotly_chart(fig_ct, use_container_width=True)
+
+                with bc_r:
+                    # Modes with the most big-change events
+                    if "mode" in big_changes.columns:
+                        top_modes = (big_changes.groupby("mode").size()
+                                                  .reset_index(name="big_changes")
+                                                  .sort_values("big_changes", ascending=True)
+                                                  .tail(12))
+                        if not top_modes.empty:
+                            fig_tm = px.bar(top_modes, x="big_changes", y="mode",
+                                            orientation="h", text="big_changes",
+                                            color_discrete_sequence=[BLUE],
+                                            labels={"big_changes":"Big changes","mode":"Mode"})
+                            fig_tm.update_traces(textposition="outside",
+                                                 textfont=dict(family="DM Mono, monospace", size=11, color="#0f1d35"),
+                                                 cliponaxis=False, name="")
+                            apply_plot_theme(fig_tm, height=max(260, 30 * len(top_modes)))
+                            fig_tm.update_layout(showlegend=False)
+                            fig_tm.update_xaxes(range=[0, top_modes["big_changes"].max() * 1.18])
+                            st.plotly_chart(fig_tm, use_container_width=True)
+
+                # Detail table
+                st.markdown(
+                    '<div style="font-size:0.85rem;font-weight:600;color:var(--ink);margin:8px 0;">'
+                    'Every big change in the current filter</div>',
+                    unsafe_allow_html=True
+                )
+                bc_show_cols = [c for c in ["change_time","mode","check_class","change_type",
+                                            "bb","ba","delta","reason","accuracy"]
+                                if c in big_changes.columns]
+                bc_disp = big_changes[bc_show_cols].copy()
+                if "change_time" in bc_disp.columns:
+                    bc_disp["change_time"] = pd.to_datetime(bc_disp["change_time"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+                bc_disp["bb"]    = bc_disp["bb"].astype(int)
+                bc_disp["ba"]    = bc_disp["ba"].astype(int)
+                bc_disp["delta"] = bc_disp["delta"].astype(int)
+                bc_disp = bc_disp.rename(columns={
+                    "change_time":"When","mode":"Mode","check_class":"Class",
+                    "change_type":"Change","bb":"Before","ba":"After","delta":"Δ",
+                    "reason":"Reason","accuracy":"Acc."
+                })
+                bc_disp = bc_disp.sort_values("Δ", key=lambda s: s.abs(), ascending=False)
+                st.dataframe(bc_disp, use_container_width=True, hide_index=True,
+                             height=min(440, 60 + 36 * min(len(bc_disp), 12)))
+            else:
+                st.success("No big boundary changes in the current filter scope.")
+        else:
+            st.info("Boundary data not available for the current filter.")
+
+        st.markdown("---")
+
+        # ════════════════════════════════════════════════════════
+        # ALERT-TAGGED CHANGES — accuracy == "alert"
+        # ════════════════════════════════════════════════════════
+        st.markdown('<div class="section-title">Modes Tagged as “alert”</div>', unsafe_allow_html=True)
+        st.caption(
+            "Changes where the **accuracy** column was recorded as **alert** — these are flagged by whoever made the change "
+            "as needing extra attention. Worth reviewing whether they were resolved later."
+        )
+
+        if "accuracy" in filtered_mode.columns:
+            alert_df = filtered_mode[filtered_mode["accuracy"].astype(str).str.lower() == "alert"].copy()
+
+            n_alerts = len(alert_df)
+            n_alert_modes = alert_df["mode"].nunique() if "mode" in alert_df.columns and not alert_df.empty else 0
+
+            ak1, ak2 = st.columns(2)
+            ak1.markdown(kpi_html("Alert Records", f"{n_alerts:,}",
+                                  "in current filter scope"), unsafe_allow_html=True)
+            ak2.markdown(kpi_html("Distinct Modes", f"{n_alert_modes:,}",
+                                  "with at least one alert"), unsafe_allow_html=True)
+
+            if not alert_df.empty:
+                # Mode breakdown chart
+                if "mode" in alert_df.columns:
+                    mc = alert_df["mode"].value_counts().reset_index()
+                    mc.columns = ["Mode", "Alerts"]
+                    mc_asc = mc.sort_values("Alerts", ascending=True)
+                    fig_al = px.bar(mc_asc, x="Alerts", y="Mode", orientation="h",
+                                    text="Alerts", color_discrete_sequence=[ROSE])
+                    fig_al.update_traces(textposition="outside",
+                                         textfont=dict(family="DM Mono, monospace", size=12, color="#0f1d35"),
+                                         cliponaxis=False, name="")
+                    apply_plot_theme(fig_al, height=max(240, 36 * len(mc_asc)))
+                    fig_al.update_layout(showlegend=False)
+                    fig_al.update_xaxes(range=[0, mc_asc["Alerts"].max() * 1.18])
+                    st.plotly_chart(fig_al, use_container_width=True)
+
+                # Detail table
+                al_cols = [c for c in ["change_time","mode","check_class","action",
+                                       "boundary_before","boundary_after","sensitivity",
+                                       "reason","notes_changes"] if c in alert_df.columns]
+                al_disp = alert_df[al_cols].copy()
+                if "change_time" in al_disp.columns:
+                    al_disp["change_time"] = pd.to_datetime(al_disp["change_time"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+                al_disp = al_disp.rename(columns={
+                    "change_time":"When","mode":"Mode","check_class":"Class","action":"Action",
+                    "boundary_before":"Before","boundary_after":"After","sensitivity":"Sens.",
+                    "reason":"Reason","notes_changes":"Notes"
+                })
+                sort_col = "When" if "When" in al_disp.columns else al_disp.columns[0]
+                st.dataframe(al_disp.sort_values(sort_col, ascending=False),
+                             use_container_width=True, hide_index=True,
+                             height=min(360, 60 + 36 * min(len(al_disp), 8)))
+            else:
+                st.success("No alert-tagged changes in the current filter scope.")
+        else:
+            st.info("No accuracy column found in changes data.")
 
         st.markdown("---")
 
@@ -3156,6 +3405,237 @@ elif page.endswith("Operators"):
 
 
 # ═══════════════════════════════════════════════════════════════
+# GROWER PAGE — single-grower deep-dive
+# ═══════════════════════════════════════════════════════════════
+elif page.endswith("Grower"):
+    st.markdown('<div class="section-title">Grower Deep-Dive</div>', unsafe_allow_html=True)
+    st.caption(
+        "Pick a grower and see everything we know about their fruit through the line — "
+        "varieties handled, bin volume, throughput speed, downtime impact, and main defects "
+        "from the linked batches."
+    )
+
+    if "grower" not in runs.columns:
+        st.warning("Grower column not present in runs_raw.csv.")
+    elif not sel_gr_grower or sel_gr_grower == "(no growers found)":
+        st.info("Select a grower in the filter above.")
+    else:
+        gr_df = runs[runs["grower"].astype(str) == sel_gr_grower].copy()
+        if sel_gr_year != "All years" and "run_date" in gr_df.columns:
+            gr_df = gr_df[gr_df["run_date"].dt.year.astype(str) == sel_gr_year]
+        if sel_gr_variety != "All varieties" and "variety" in gr_df.columns:
+            gr_df = gr_df[gr_df["variety"].astype(str) == sel_gr_variety]
+
+        if gr_df.empty:
+            st.warning("No runs match the current filters for this grower.")
+        else:
+            # ── Top-line KPIs ──────────────────────────────────
+            total_bins = int(gr_df["bins_run"].sum()) if "bins_run" in gr_df.columns else 0
+            n_runs_g   = len(gr_df)
+            n_varieties_g = gr_df["variety"].nunique() if "variety" in gr_df.columns else 0
+            total_hours = float(gr_df["run_hours"].sum()) if "run_hours" in gr_df.columns else 0
+            avg_bph_g = (gr_df["total_bins_with_retip"].sum() / total_hours
+                         if "total_bins_with_retip" in gr_df.columns and total_hours > 0 else None)
+            total_retip = int(gr_df["retip"].sum()) if "retip" in gr_df.columns else 0
+
+            k1, k2, k3, k4, k5 = st.columns(5)
+            k1.markdown(kpi_html("Total Bins", f"{total_bins:,}"), unsafe_allow_html=True)
+            k2.markdown(kpi_html("Runs", f"{n_runs_g:,}"), unsafe_allow_html=True)
+            k3.markdown(kpi_html("Varieties Handled", f"{n_varieties_g}"), unsafe_allow_html=True)
+            k4.markdown(kpi_html("Avg Bins / Hour",
+                                 f"{avg_bph_g:.1f}" if avg_bph_g is not None else "N/A"),
+                        unsafe_allow_html=True)
+            k5.markdown(kpi_html("Total Retip", f"{total_retip:,}"), unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            # ── Variety mix + Bins by variety ─────────────────
+            vm_l, vm_r = st.columns(2)
+            with vm_l:
+                st.markdown('<div class="section-title">Variety Mix</div>', unsafe_allow_html=True)
+                if "variety" in gr_df.columns and "bins_run" in gr_df.columns:
+                    vmix = (gr_df.groupby("variety", as_index=False)["bins_run"].sum()
+                                  .sort_values("bins_run", ascending=False))
+                    if not vmix.empty:
+                        fig_vmix = px.pie(vmix, names="variety", values="bins_run",
+                                          hole=0.55, color_discrete_sequence=COLOR_SEQ)
+                        fig_vmix.update_traces(textposition="outside",
+                                               textinfo="label+percent",
+                                               hovertemplate="%{label}: %{value:,} bins (%{percent})<extra></extra>")
+                        apply_plot_theme(fig_vmix, height=320)
+                        st.plotly_chart(fig_vmix, use_container_width=True)
+
+            with vm_r:
+                st.markdown('<div class="section-title">Bins per Variety</div>', unsafe_allow_html=True)
+                if "variety" in gr_df.columns and "bins_run" in gr_df.columns:
+                    vbins = (gr_df.groupby("variety", as_index=False)
+                                   .agg(bins=("bins_run","sum"), runs=("run_id","count"))
+                                   .sort_values("bins", ascending=True))
+                    if not vbins.empty:
+                        fig_vb = px.bar(vbins, x="bins", y="variety", orientation="h",
+                                        text="bins", color_discrete_sequence=[BLUE],
+                                        hover_data={"runs": True},
+                                        labels={"bins":"Bins","variety":"Variety"})
+                        fig_vb.update_traces(textposition="outside",
+                                             textfont=dict(family="DM Mono, monospace", size=11, color="#0f1d35"),
+                                             cliponaxis=False, name="")
+                        apply_plot_theme(fig_vb, height=max(280, 36 * len(vbins)))
+                        fig_vb.update_layout(showlegend=False)
+                        fig_vb.update_xaxes(range=[0, vbins["bins"].max() * 1.18])
+                        st.plotly_chart(fig_vb, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Run speed per variety ─────────────────────────
+            st.markdown('<div class="section-title">Run Speed by Variety</div>', unsafe_allow_html=True)
+            st.caption("Bins per hour per variety for this grower — slower varieties mean tighter quality control, faster ones mean cleaner fruit / easier varieties.")
+            if "variety" in gr_df.columns and "run_hours" in gr_df.columns:
+                spd = (gr_df.groupby("variety", as_index=False)
+                            .apply(lambda g: pd.Series({
+                                "bins_per_hour": (g["total_bins_with_retip"].sum() / g["run_hours"].sum()
+                                                  if g["run_hours"].sum() > 0 else None),
+                                "runs": len(g),
+                            }), include_groups=False)
+                            .dropna(subset=["bins_per_hour"])
+                            .sort_values("bins_per_hour", ascending=True))
+                if not spd.empty:
+                    fig_spd = px.bar(spd, x="bins_per_hour", y="variety", orientation="h",
+                                     color="bins_per_hour",
+                                     color_continuous_scale=["#dbeeff", BLUE],
+                                     labels={"bins_per_hour":"Bins/hr","variety":"Variety"},
+                                     hover_data={"runs": True})
+                    fig_spd.update_coloraxes(showscale=False)
+                    apply_plot_theme(fig_spd, height=max(260, 36 * len(spd)))
+                    st.plotly_chart(fig_spd, use_container_width=True)
+                else:
+                    st.info("No bins-per-hour data for this grower.")
+
+            st.markdown("---")
+
+            # ── Quality grades ────────────────────────────────
+            st.markdown('<div class="section-title">Quality Profile</div>', unsafe_allow_html=True)
+            st.caption("Average grade rates across all runs for this grower. Premium = top fruit, Juice = lowest.")
+            rate_cols = [("premium_rate","Premium"), ("c1_color_rate","C1 Color"),
+                         ("c1_quality_rate","C1 Quality"), ("c2_color_rate","C2 Color"),
+                         ("c2_quality_rate","C2 Quality"), ("no_color_rate","No Color"),
+                         ("juice_rate","Juice")]
+            avail = [(c,l) for c,l in rate_cols if c in gr_df.columns and gr_df[c].notna().any()]
+            if avail:
+                grade_df = pd.DataFrame([
+                    {"Grade": label, "Avg %": gr_df[col].dropna().mean()}
+                    for col, label in avail
+                ])
+                fig_grade = px.bar(grade_df, x="Grade", y="Avg %",
+                                   text=grade_df["Avg %"].round(1).astype(str) + "%",
+                                   color="Grade",
+                                   color_discrete_map={
+                                       "Premium": EMERALD, "C1 Color": BLUE, "C1 Quality": BLUE,
+                                       "C2 Color": AMBER, "C2 Quality": AMBER,
+                                       "No Color": "#7a90b0", "Juice": ROSE
+                                   })
+                fig_grade.update_traces(textposition="outside",
+                                        textfont=dict(family="DM Mono, monospace", size=11, color="#0f1d35"),
+                                        cliponaxis=False)
+                apply_plot_theme(fig_grade, height=320)
+                fig_grade.update_layout(showlegend=False)
+                st.plotly_chart(fig_grade, use_container_width=True)
+            else:
+                st.info("No grade-rate data recorded for this grower's runs.")
+
+            st.markdown("---")
+
+            # ── Downtime impact ───────────────────────────────
+            st.markdown('<div class="section-title">Downtime During This Grower\'s Runs</div>', unsafe_allow_html=True)
+            st.caption("Downtime events from downtime_raw.csv linked to this grower's runs.")
+            if downtime is not None and "run_id" in downtime.columns:
+                gr_run_ids = set(gr_df["run_id"].astype(str))
+                dt_gr = downtime[downtime["run_id"].astype(str).isin(gr_run_ids)].copy()
+                if not dt_gr.empty:
+                    total_dt = dt_gr["duration_hours"].sum() if "duration_hours" in dt_gr.columns else 0
+                    n_dt_events = len(dt_gr)
+                    dtk1, dtk2, dtk3 = st.columns(3)
+                    dtk1.markdown(kpi_html("Downtime Events", f"{n_dt_events:,}"), unsafe_allow_html=True)
+                    dtk2.markdown(kpi_html("Total Downtime", f"{total_dt:.1f} hr"), unsafe_allow_html=True)
+                    runs_pct = (n_dt_events / n_runs_g * 100) if n_runs_g else 0
+                    dtk3.markdown(kpi_html("% of Runs Affected", f"{runs_pct:.0f}%"), unsafe_allow_html=True)
+
+                    if "downtime_area" in dt_gr.columns:
+                        area_dt = (dt_gr.groupby("downtime_area", as_index=False)
+                                         .agg(events=("downtime_area","size"),
+                                              hours=("duration_hours","sum"))
+                                         .sort_values("hours", ascending=True))
+                        if not area_dt.empty:
+                            fig_dt = px.bar(area_dt, x="hours", y="downtime_area", orientation="h",
+                                            text=area_dt["hours"].round(1).astype(str) + " hr",
+                                            color_discrete_sequence=[ROSE],
+                                            hover_data={"events": True},
+                                            labels={"hours":"Hours","downtime_area":"Area"})
+                            fig_dt.update_traces(textposition="outside",
+                                                 textfont=dict(family="DM Mono, monospace", size=11, color="#0f1d35"),
+                                                 cliponaxis=False, name="")
+                            apply_plot_theme(fig_dt, height=max(220, 36 * len(area_dt)))
+                            fig_dt.update_layout(showlegend=False)
+                            st.plotly_chart(fig_dt, use_container_width=True)
+                else:
+                    st.success("No downtime recorded for this grower in the selected period.")
+            else:
+                st.info("downtime_raw.csv not available.")
+
+            st.markdown("---")
+
+            # ── Main defects from batches ─────────────────────
+            st.markdown('<div class="section-title">Main Defects from Linked Batches</div>', unsafe_allow_html=True)
+            st.caption("Defects listed against batches that came from this grower. Top defects show what their fruit struggles with.")
+            if batches is not None and "grower" in batches.columns:
+                gr_batches = batches[batches["grower"].astype(str) == sel_gr_grower].copy()
+                if sel_gr_variety != "All varieties" and "variety" in gr_batches.columns:
+                    gr_batches = gr_batches[gr_batches["variety"].astype(str) == sel_gr_variety]
+                defect_cols = [c for c in ["defect_1","defect_2","defect_3"] if c in gr_batches.columns]
+                if defect_cols and not gr_batches.empty:
+                    all_defects = []
+                    for c in defect_cols:
+                        all_defects.extend(gr_batches[c].dropna().astype(str).str.strip().tolist())
+                    all_defects = [d for d in all_defects if d and d != "—"]
+                    if all_defects:
+                        dc = pd.Series(all_defects).value_counts().head(15).reset_index()
+                        dc.columns = ["Defect","Count"]
+                        dc_asc = dc.sort_values("Count", ascending=True)
+                        fig_dc = px.bar(dc_asc, x="Count", y="Defect", orientation="h",
+                                        text="Count", color_discrete_sequence=[BLUE])
+                        fig_dc.update_traces(textposition="outside",
+                                             textfont=dict(family="DM Mono, monospace", size=12, color="#0f1d35"),
+                                             cliponaxis=False, name="")
+                        apply_plot_theme(fig_dc, height=max(260, 30 * len(dc_asc)))
+                        fig_dc.update_layout(showlegend=False)
+                        fig_dc.update_xaxes(range=[0, dc_asc["Count"].max() * 1.18])
+                        st.plotly_chart(fig_dc, use_container_width=True)
+                    else:
+                        st.info("No defect data recorded against this grower's batches.")
+                else:
+                    st.info("No linked batches found.")
+            else:
+                st.info("batches_raw.csv not available.")
+
+            st.markdown("---")
+
+            # ── All runs for this grower (compact table) ──────
+            st.markdown('<div class="section-title">All Runs for This Grower (current filters)</div>', unsafe_allow_html=True)
+            show_cols = [c for c in ["run_date","run_id","variety","batch_id","bins_run","retip",
+                                     "premium_rate","juice_rate","notes_run"] if c in gr_df.columns]
+            disp = gr_df[show_cols].copy()
+            if "run_date" in disp.columns:
+                disp["run_date"] = pd.to_datetime(disp["run_date"]).dt.strftime("%Y-%m-%d")
+            disp = disp.rename(columns={
+                "run_date":"Date","run_id":"Run ID","variety":"Variety","batch_id":"Batch",
+                "bins_run":"Bins","retip":"Retip","premium_rate":"Premium %",
+                "juice_rate":"Juice %","notes_run":"Notes"
+            })
+            sort_col = "Date" if "Date" in disp.columns else disp.columns[0]
+            st.dataframe(disp.sort_values(sort_col, ascending=False),
+                         use_container_width=True, hide_index=True, height=360)
+
+
+# ═══════════════════════════════════════════════════════════════
 # TRAINING PAGE  (dec_file training records)
 # ═══════════════════════════════════════════════════════════════
 elif page.endswith("Training"):
@@ -3766,6 +4246,234 @@ elif page.endswith("Solenoids"):
             sort_col = "Date" if "Date" in full_disp.columns else full_disp.columns[0]
             st.dataframe(full_disp.sort_values(sort_col, ascending=False),
                          use_container_width=True, hide_index=True, height=400)
+
+
+# ═══════════════════════════════════════════════════════════════
+# EXPLORER PAGE — merged runs table with drill-down per run
+# ═══════════════════════════════════════════════════════════════
+elif page.endswith("Explorer"):
+    st.markdown('<div class="section-title">Runs Explorer</div>', unsafe_allow_html=True)
+    st.caption(
+        "Every run with the columns you'd normally have to chase across multiple sheets — joined here in one place. "
+        "Filter using the top controls or sort any column. "
+        "**Pick a Run ID from the dropdown below the table** to expand a full drill-down: notes, "
+        "linked batch info, IQS changes made during the run, and downtime events."
+    )
+
+    ex_df = runs.copy()
+    # Apply filters
+    if sel_ex_year != "All years" and "run_date" in ex_df.columns:
+        ex_df = ex_df[ex_df["run_date"].dt.year.astype(str) == sel_ex_year]
+    if sel_ex_variety != "All varieties" and "variety" in ex_df.columns:
+        ex_df = ex_df[ex_df["variety"].astype(str) == sel_ex_variety]
+    if sel_ex_grower != "All growers" and "grower" in ex_df.columns:
+        ex_df = ex_df[ex_df["grower"].astype(str) == sel_ex_grower]
+
+    # Free-text filter scans key columns AND notes_run
+    q = (ex_query or "").strip().lower()
+    if q:
+        text_cols = [c for c in ["run_id","grower","variety","batch_id","operator_machine",
+                                 "operator_quality","notes_run"] if c in ex_df.columns]
+        mask = pd.Series(False, index=ex_df.index)
+        for c in text_cols:
+            mask |= ex_df[c].astype(str).str.lower().str.contains(q, regex=False, na=False)
+        ex_df = ex_df[mask]
+
+    if ex_df.empty:
+        st.warning("No runs match the current filters.")
+    else:
+        # ── KPI strip ─────────────────────────────────────────
+        n_runs_e = len(ex_df)
+        n_bins_e = int(ex_df["bins_run"].sum()) if "bins_run" in ex_df.columns else 0
+        n_growers_e = ex_df["grower"].nunique() if "grower" in ex_df.columns else 0
+        n_vars_e = ex_df["variety"].nunique() if "variety" in ex_df.columns else 0
+
+        e1, e2, e3, e4 = st.columns(4)
+        e1.markdown(kpi_html("Runs in View", f"{n_runs_e:,}"), unsafe_allow_html=True)
+        e2.markdown(kpi_html("Total Bins", f"{n_bins_e:,}"), unsafe_allow_html=True)
+        e3.markdown(kpi_html("Growers", f"{n_growers_e:,}"), unsafe_allow_html=True)
+        e4.markdown(kpi_html("Varieties", f"{n_vars_e:,}"), unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ── Build enriched display table ──────────────────────
+        # Join in the linked batch defects + downtime count + change count
+        # so the user sees everything they care about per run in one row.
+        ex_enriched = ex_df.copy()
+
+        # Linked defects from batches (dict lookup — safe for duplicate batch_ids)
+        if batches is not None and "batch_id" in batches.columns:
+            defect_cols = [c for c in ["defect_1","defect_2","defect_3"] if c in batches.columns]
+            if defect_cols:
+                b_dedup = batches.drop_duplicates("batch_id", keep="first").copy()
+                b_dedup["batch_id_s"] = b_dedup["batch_id"].astype(str)
+
+                def _row_defects(r):
+                    vals = []
+                    for c in defect_cols:
+                        v = r.get(c)
+                        if pd.notna(v) and str(v).strip():
+                            vals.append(str(v).strip())
+                    return ", ".join(vals) if vals else ""
+                defect_map = {r["batch_id_s"]: _row_defects(r) for _, r in b_dedup.iterrows()}
+                ex_enriched["Linked Defects"] = ex_enriched["batch_id"].astype(str).map(defect_map).fillna("")
+
+        # IQS change count per run
+        if changes is not None and "run_id" in changes.columns:
+            cc_per_run = changes.groupby("run_id").size().to_dict()
+            ex_enriched["# Changes"] = ex_enriched["run_id"].map(cc_per_run).fillna(0).astype(int)
+
+        # Downtime count + hours per run
+        if downtime is not None and "run_id" in downtime.columns:
+            dt_count = downtime.groupby("run_id").size().to_dict()
+            dt_hours = downtime.groupby("run_id")["duration_hours"].sum().to_dict() if "duration_hours" in downtime.columns else {}
+            ex_enriched["# Downtime"] = ex_enriched["run_id"].map(dt_count).fillna(0).astype(int)
+            ex_enriched["DT Hrs"] = ex_enriched["run_id"].map(dt_hours).fillna(0).round(2)
+
+        # Select & rename display columns
+        show_cols = [c for c in ["run_date","run_id","grower","variety","batch_id",
+                                 "operator_machine","operator_quality","start_time","end_time",
+                                 "run_hours","bins_run","bins_per_hour_row","retip",
+                                 "premium_rate","c1_color_rate","c2_color_rate","juice_rate",
+                                 "Linked Defects","# Changes","# Downtime","DT Hrs","notes_run"]
+                     if c in ex_enriched.columns]
+        ex_show = ex_enriched[show_cols].copy()
+        if "run_date" in ex_show.columns:
+            ex_show["run_date"] = pd.to_datetime(ex_show["run_date"]).dt.strftime("%Y-%m-%d")
+        for rc in ["bins_per_hour_row","premium_rate","c1_color_rate","c2_color_rate","juice_rate","run_hours"]:
+            if rc in ex_show.columns:
+                ex_show[rc] = pd.to_numeric(ex_show[rc], errors="coerce").round(2)
+        rename_map = {
+            "run_date":"Date","run_id":"Run ID","grower":"Grower","variety":"Variety",
+            "batch_id":"Batch","operator_machine":"Op (M)","operator_quality":"Op (Q)",
+            "start_time":"Start","end_time":"End","run_hours":"Hours",
+            "bins_run":"Bins","bins_per_hour_row":"Bins/hr","retip":"Retip",
+            "premium_rate":"Premium %","c1_color_rate":"C1 Col %","c2_color_rate":"C2 Col %",
+            "juice_rate":"Juice %","notes_run":"Notes"
+        }
+        ex_show = ex_show.rename(columns=rename_map)
+        sort_col = "Date" if "Date" in ex_show.columns else ex_show.columns[0]
+        ex_show = ex_show.sort_values(sort_col, ascending=False)
+
+        st.dataframe(ex_show, use_container_width=True, hide_index=True, height=460)
+
+        # ── Drill-down panel ──────────────────────────────────
+        st.markdown("---")
+        st.markdown('<div class="section-title">Drill-Down for a Run</div>', unsafe_allow_html=True)
+        st.caption("Pick any Run ID below to see every related note, batch detail, IQS change, and downtime event for that run.")
+
+        run_id_list = ex_df["run_id"].dropna().astype(str).tolist() if "run_id" in ex_df.columns else []
+        if not run_id_list:
+            st.info("No Run IDs to drill into.")
+        else:
+            picked_run = st.selectbox(
+                "Run ID",
+                ["(pick one)"] + run_id_list,
+                key="ex_picked_run",
+            )
+
+            if picked_run and picked_run != "(pick one)":
+                row = ex_df[ex_df["run_id"].astype(str) == picked_run].iloc[0]
+
+                # ── Headline strip ────────────────────────────
+                hdr_html = f"""
+                <div style='background:#1a2744;color:#fff;padding:14px 18px;border-radius:10px;
+                            margin:8px 0 14px 0;font-family:Inter,sans-serif;'>
+                  <div style='font-size:1.1rem;font-weight:700;letter-spacing:0.04em;'>
+                    Run <span style='color:{BLUE};'>{picked_run}</span>
+                  </div>
+                  <div style='font-family:DM Mono,monospace;font-size:0.85rem;color:#b8cce8;margin-top:4px;'>
+                    {pd.to_datetime(row['run_date']).strftime('%Y-%m-%d') if pd.notna(row.get('run_date')) else '—'}
+                    &nbsp;·&nbsp; {row.get('grower','—')} &nbsp;·&nbsp; {row.get('variety','—')}
+                    &nbsp;·&nbsp; Batch {row.get('batch_id','—')}
+                  </div>
+                </div>"""
+                st.markdown(hdr_html, unsafe_allow_html=True)
+
+                # ── Quick facts ───────────────────────────────
+                fc1, fc2, fc3, fc4 = st.columns(4)
+                fc1.markdown(kpi_html("Bins", f"{int(row.get('bins_run',0)):,}"
+                                              if pd.notna(row.get('bins_run')) else "—"),
+                             unsafe_allow_html=True)
+                fc2.markdown(kpi_html("Hours",
+                                      f"{row.get('run_hours',0):.1f}"
+                                      if pd.notna(row.get('run_hours')) else "—"),
+                             unsafe_allow_html=True)
+                fc3.markdown(kpi_html("Premium %",
+                                      f"{row.get('premium_rate',0):.1f}%"
+                                      if pd.notna(row.get('premium_rate')) else "—"),
+                             unsafe_allow_html=True)
+                fc4.markdown(kpi_html("Retip", f"{int(row.get('retip',0)):,}"
+                                              if pd.notna(row.get('retip')) else "—"),
+                             unsafe_allow_html=True)
+
+                # ── Run notes ─────────────────────────────────
+                with st.expander("📝 Run notes", expanded=True):
+                    notes_run_val = row.get("notes_run")
+                    if pd.notna(notes_run_val) and str(notes_run_val).strip():
+                        st.write(str(notes_run_val))
+                    else:
+                        st.caption("No run notes recorded.")
+
+                # ── Linked batch details ──────────────────────
+                with st.expander("📦 Linked batch", expanded=True):
+                    if batches is not None and "batch_id" in batches.columns and pd.notna(row.get("batch_id")):
+                        b_match = batches[batches["batch_id"].astype(str) == str(row["batch_id"])]
+                        if not b_match.empty:
+                            b_row = b_match.iloc[0]
+                            bcols = [c for c in ["batch_id","grower","variety","decfile_version",
+                                                 "defect_1","defect_2","defect_3","leaf_present",
+                                                 "premium","premium%"] if c in b_match.columns]
+                            b_show = pd.DataFrame([{c: b_row.get(c, "") for c in bcols}])
+                            st.dataframe(b_show, use_container_width=True, hide_index=True)
+                            batch_notes = b_row.get("notes_batches")
+                            if pd.notna(batch_notes) and str(batch_notes).strip():
+                                st.markdown(f"**Batch notes:** {batch_notes}")
+                            else:
+                                st.caption("No batch notes recorded.")
+                        else:
+                            st.caption(f"No batch matching `{row['batch_id']}` in batches_raw.csv.")
+                    else:
+                        st.caption("No batch linked to this run.")
+
+                # ── IQS changes during this run ───────────────
+                with st.expander("🎯 IQS changes during this run", expanded=False):
+                    if changes is not None and "run_id" in changes.columns:
+                        ch_match = changes[changes["run_id"].astype(str) == picked_run].copy()
+                        if not ch_match.empty:
+                            ccols = [c for c in ["change_time","mode","check_class","action",
+                                                 "boundary_before","boundary_after","sensitivity",
+                                                 "accuracy","reason","notes_changes"] if c in ch_match.columns]
+                            if "change_time" in ch_match.columns:
+                                ch_match["change_time"] = pd.to_datetime(ch_match["change_time"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+                            ch_show = ch_match[ccols].rename(columns={
+                                "change_time":"When","mode":"Mode","check_class":"Class",
+                                "action":"Action","boundary_before":"Before","boundary_after":"After",
+                                "sensitivity":"Sens.","accuracy":"Acc.","reason":"Reason",
+                                "notes_changes":"Notes"
+                            })
+                            st.dataframe(ch_show, use_container_width=True, hide_index=True,
+                                         height=min(280, 60 + 36 * min(len(ch_show), 6)))
+                        else:
+                            st.caption("No IQS changes recorded for this run.")
+
+                # ── Downtime during this run ──────────────────
+                with st.expander("⛔ Downtime during this run", expanded=False):
+                    if downtime is not None and "run_id" in downtime.columns:
+                        dt_match = downtime[downtime["run_id"].astype(str) == picked_run].copy()
+                        if not dt_match.empty:
+                            dcols = [c for c in ["downtime_start","downtime_end","duration_hours",
+                                                 "downtime_area","downtime_reason"] if c in dt_match.columns]
+                            dt_show = dt_match[dcols].rename(columns={
+                                "downtime_start":"Start","downtime_end":"End",
+                                "duration_hours":"Hours","downtime_area":"Area","downtime_reason":"Reason"
+                            })
+                            st.dataframe(dt_show, use_container_width=True, hide_index=True,
+                                         height=min(220, 60 + 36 * min(len(dt_show), 5)))
+                            total_dt = dt_match["duration_hours"].sum() if "duration_hours" in dt_match.columns else 0
+                            st.markdown(f"**Total downtime this run:** {total_dt:.2f} hr")
+                        else:
+                            st.caption("No downtime recorded for this run.")
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -177,7 +177,7 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8678,ardrossan,pink_lady,2026-05-06,2026-05-06,gocup,O022,bruises,,,no,yes,35,"remove decay_lbd and stem decay_rgb mode, clean fruit misread"
 8681,sagar ardmona,granny_smith,2026-04-02,2026-04-08,,Z011,blush,sunburn,major,no,no,0,applied new iFA watercore_007
 8682,sagar_produce,granny_smith,2026-04-09,2026-04-09,,Z011,sunburn,blush,,no,no,0,
-8686,ardrossan,kanzi,2026-04-14,2026-04-21,ardossan,N003,average_stem,lenticel,spots,no,no,0,
+8686,ardrossan,kanzi,2026-04-14,2026-04-21,ardrossan,N003,average_stem,lenticel,spots,no,no,0,
 8687,ardrossan,kanzi,2026-04-15,2026-04-16,gocup,N003,average_stem,punctures,,yes,no,0,
 8690,bhangu,pink_lady,2026-05-01,2026-05-01,,O022,scab,limrubs,calyx_minor,no,no,35,
 8691,plunketts,pink_lady,2026-04-20,2026-04-21,P07,O022,holes,limrubs,insect,no,no,35,
@@ -185,7 +185,14 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8693,pottenger,pink_lady,2026-05-07,2026-05-08,,O022,bruises,sunburn_minor,leaf,yes,yes,35,start premium after 35th bins from Andrew
 8697,paganfield,pink_lady,2026-05-02,2026-05-02,,O022,bruises,sunburn_major,,yes,yes,35,
 8699,adm_farm,pink_lady,2026-05-01,2026-05-20,,O022,lenticel,sunburn_major,holes_major,yes,yes,35,chemical_burns samples collected
-8671,plunketts,pink_lady,2026-04-28,2026-04-28,,Z011,sunburn,russets,marks_skin,no,no,0,
+8701,sagar ardmona,granny_smith,2026-03-31,2026-04-01,,Z011,sunburn,russets,marks_skin,no,no,0,
+8705,plunketts,granny_smith,2026-05-13,2026-05-21,,Z011,yellowish,sunburn,,no,no,0,ticket tipped @R-10359
+8704,bestview_orchards,pink_lady,2026-05-05,2026-05-07,,O022,color_low,bruises,scab,no,yes,40,
+8710,ardrossan,kanzi,2026-04-14,2026-04-14,ardrossan,N003,spots,holes,average_stem,no,no,0,
+8711,ardrossan,gala,2026-03-09,2026-03-10,gocup,O004,dirt_stem,unders,,no,no,0,no IQS adjustement
+8712,ardrossan,gala,2026-03-05,2026-03-10,ardrossan,O004,dirt_stem,unders,,no,no,0,late IQS adjustment
+8713,bundara,granny_smith,2026-03-18,2026-03-19,B31,Z011,bitterpit,insect,color_skin,no,no,0,
+,,,,,,,,,,,,,
 ,,,,,,,,,,,,,
 ,,,,,,,,,,,,,
 ,,,,,,,,,,,,,
