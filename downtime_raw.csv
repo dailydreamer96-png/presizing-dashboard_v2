@@ -34,3 +34,4 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-05-29,T214,07:10,07:22,0.2,bin_broken,"from the bottom, half clean the rest clean when finish"
 2026-05-29,T214,08:49,08:59,0.17,toilet,no replacement on people so we stop the machine
 2026-05-29,T214,11:08,11:13,0.08,diabolos,missing site lane 3
+2026-06-01,T215,07:18,07:25,0.12,bin_broken,missing leg and fell into the tank

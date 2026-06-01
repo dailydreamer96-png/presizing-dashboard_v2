@@ -579,11 +579,18 @@ def load_csv(filename):
 def apply_plot_theme(fig, height=380):
     fig.update_layout(**PLOT_LAYOUT, height=height)
 
-    # ALWAYS clear top-level chart title and legend title — these are the two
-    # most common sources of stray "undefined" labels (plotly.py auto-creates
-    # a title placeholder when only title_font is set, which renders as the
-    # literal string 'undefined' on some renderers).
-    fig.update_layout(title_text="", legend_title_text="")
+    # Clear top-level chart title — common source of stray "undefined" labels.
+    fig.update_layout(title_text="")
+
+    # Clear legend title ONLY if it's the dataframe column-name fallback
+    # (renders as "undefined" on some setups). Preserve legitimate captions
+    # explicitly set by the caller (e.g. "Year", "Source", "Variety").
+    try:
+        lt = fig.layout.legend.title.text if fig.layout.legend and fig.layout.legend.title else None
+        if lt is None or str(lt).strip().lower() in ("undefined", "none", "nan", ""):
+            fig.update_layout(legend_title_text="")
+    except Exception:
+        fig.update_layout(legend_title_text="")
 
     # Universal trace cleanup: any unnamed/None/'undefined' traces have their
     # name blanked, hover gets <extra></extra> appended (kills second tooltip box).
@@ -1429,8 +1436,16 @@ if page.endswith("Summary"):
                          color_discrete_sequence=[AMBER],
                          labels={"week_label": "Week Starting", "bins_run": "Total Bins"})
 
-        fig.update_traces(hovertemplate="%{y:,.0f} bins<extra></extra>", name="")
-        fig.update_layout(showlegend=(period_choice == "Monthly"))
+        if period_choice == "Monthly":
+            # Multi-trace line chart — KEEP the auto-generated year trace names so
+            # the legend shows the year next to each colored line, and keep the
+            # year in the hover. Don't call name="" here (that wipes the legend).
+            fig.update_traces(hovertemplate="<b>%{fullData.name}</b><br>%{x}: %{y:,.0f} bins<extra></extra>")
+            fig.update_layout(showlegend=True, legend_title_text="Year")
+        else:
+            # Single-trace bar — safe to blank the trace name.
+            fig.update_traces(hovertemplate="%{y:,.0f} bins<extra></extra>", name="")
+            fig.update_layout(showlegend=False)
         apply_plot_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
@@ -2988,7 +3003,7 @@ elif page.endswith("IQS"):
 # ═══════════════════════════════════════════════════════════════
 elif page.endswith("Operators"):
     st.markdown('<div class="section-title">Shift Performance & Operating Rhythm</div>', unsafe_allow_html=True)
-    st.caption("Insights about how shifts run — throughput consistency, lane balance, downtime impact, and daily rhythm. Operator names are shown alongside, but the focus is on the shift, not blame.")
+    st.caption("How shifts run — throughput consistency, lane balance, downtime impact, daily rhythm.")
 
     ops_df = runs.copy()
     has_machine  = "operator_machine"  in ops_df.columns
@@ -3386,34 +3401,13 @@ elif page.endswith("Operators"):
                     st.dataframe(op_disp, use_container_width=True, hide_index=True,
                                  height=min(320, 60 + 38 * min(len(op_disp), 6)))
 
-        # ── Operator presence (only if data exists) ───────────
-        op_present = pd.DataFrame()
-        if has_machine or has_quality:
-            rows = []
-            for col in [c for c in ["operator_machine","operator_quality"] if c in ops_df.columns]:
-                vc = ops_df[col].dropna().astype(str).value_counts()
-                for name, cnt in vc.items():
-                    if name.strip():
-                        rows.append({"Role": col.replace("operator_","").title(), "Operator": name, "Runs": cnt})
-            op_present = pd.DataFrame(rows)
-        if not op_present.empty:
-            st.markdown("---")
-            st.markdown('<div class="section-title">Operator Coverage</div>', unsafe_allow_html=True)
-            st.caption("Who was on shift during the selected period — by role.")
-            st.dataframe(op_present.sort_values(["Role","Runs"], ascending=[True, False]),
-                         use_container_width=True, hide_index=True, height=180)
-
 
 # ═══════════════════════════════════════════════════════════════
 # GROWER PAGE — single-grower deep-dive
 # ═══════════════════════════════════════════════════════════════
 elif page.endswith("Grower"):
     st.markdown('<div class="section-title">Grower Deep-Dive</div>', unsafe_allow_html=True)
-    st.caption(
-        "Pick a grower and see everything we know about their fruit through the line — "
-        "varieties handled, bin volume, throughput speed, downtime impact, and main defects "
-        "from the linked batches."
-    )
+    st.caption("Everything we know about a grower's fruit — varieties, volume, speed, downtime, defects.")
 
     if "grower" not in runs.columns:
         st.warning("Grower column not present in runs_raw.csv.")
@@ -3447,10 +3441,86 @@ elif page.endswith("Grower"):
                         unsafe_allow_html=True)
             k5.markdown(kpi_html("Total Retip", f"{total_retip:,}"), unsafe_allow_html=True)
 
+            # ── Priority Modes callout ────────────────────────
+            # Quick "what to check first" recommendation pulled from IQS changes
+            # and accuracy=='alert' flags for this grower's runs. Sits up top so
+            # operators don't have to scroll to find it.
+            st.markdown("")
+            priority_items = []
+            if changes is not None and "run_id" in changes.columns and "run_id" in gr_df.columns:
+                gr_run_ids = set(gr_df["run_id"].astype(str))
+                gr_changes = changes[changes["run_id"].astype(str).isin(gr_run_ids)].copy()
+
+                if not gr_changes.empty and "mode" in gr_changes.columns:
+                    # Score each mode by:
+                    #   + adjustments  (more = needs frequent tuning)
+                    #   + alerts       (heavy weight)
+                    #   + big changes  (0↔value, |Δ|≥100)
+                    gr_changes["bb"] = pd.to_numeric(gr_changes.get("boundary_before"), errors="coerce")
+                    gr_changes["ba"] = pd.to_numeric(gr_changes.get("boundary_after"),  errors="coerce")
+                    gr_changes["is_adjust"] = gr_changes["action"].astype(str).str.lower().str.startswith("a") if "action" in gr_changes.columns else False
+                    gr_changes["is_alert"]  = gr_changes["accuracy"].astype(str).str.lower() == "alert" if "accuracy" in gr_changes.columns else False
+                    gr_changes["is_big"]    = (
+                        ((gr_changes["bb"] == 0) & (gr_changes["ba"] > 0)) |
+                        ((gr_changes["ba"] == 0) & (gr_changes["bb"] > 0)) |
+                        ((gr_changes["ba"] - gr_changes["bb"]).abs() >= 100)
+                    )
+
+                    scored = (gr_changes.groupby("mode")
+                              .agg(adjusts=("is_adjust","sum"),
+                                   alerts=("is_alert","sum"),
+                                   bigs=("is_big","sum"),
+                                   total=("mode","size"))
+                              .reset_index())
+                    scored["score"] = scored["adjusts"] + scored["alerts"]*3 + scored["bigs"]*2
+
+                    top_priority = scored[scored["score"] > 0].sort_values("score", ascending=False).head(5)
+
+                    for _, r in top_priority.iterrows():
+                        reasons = []
+                        if r["alerts"] > 0:  reasons.append(f"{int(r['alerts'])} alert{'s' if r['alerts']>1 else ''}")
+                        if r["bigs"] > 0:    reasons.append(f"{int(r['bigs'])} big change{'s' if r['bigs']>1 else ''}")
+                        if r["adjusts"] > 0: reasons.append(f"{int(r['adjusts'])} adjustment{'s' if r['adjusts']>1 else ''}")
+                        priority_items.append({"mode": r["mode"], "reasons": " · ".join(reasons)})
+
+            if priority_items:
+                items_html = "".join([
+                    f'<div style="display:flex;align-items:center;gap:14px;padding:8px 0;'
+                    f'border-bottom:1px solid rgba(255,255,255,0.08);">'
+                    f'<div style="background:rgba(255,255,255,0.12);color:#fff;padding:4px 10px;'
+                    f'border-radius:6px;font-family:DM Mono,monospace;font-size:0.75rem;font-weight:700;">{i+1}</div>'
+                    f'<div style="flex:1;">'
+                    f'<div style="font-family:DM Mono,monospace;color:#fff;font-size:0.95rem;font-weight:700;">{it["mode"]}</div>'
+                    f'<div style="font-family:Inter,sans-serif;color:#b8cce8;font-size:0.8rem;">{it["reasons"]}</div>'
+                    f'</div></div>'
+                    for i, it in enumerate(priority_items)
+                ])
+                grower_label = sel_gr_grower.replace("_", " ").title()
+                st.markdown(
+                    f'<div style="background:#1a2744;border-left:4px solid {BLUE};border-radius:10px;'
+                    f'padding:16px 20px;margin:8px 0 4px 0;font-family:Inter,sans-serif;">'
+                    f'<div style="color:#b8cce8;font-size:0.72rem;font-weight:700;letter-spacing:0.08em;'
+                    f'text-transform:uppercase;margin-bottom:10px;">🎯 Priority Modes to Check for {grower_label}</div>'
+                    f'{items_html}'
+                    f'<div style="color:#7a90b0;font-size:0.75rem;margin-top:10px;font-style:italic;">'
+                    f'Ranked by alerts (×3), big boundary changes (×2), and adjustments. '
+                    f'Use the IQS tab to dig into any of these modes.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    f'<div style="background:#e8f5ee;border-left:4px solid {EMERALD};border-radius:10px;'
+                    f'padding:14px 18px;margin:8px 0 4px 0;font-family:Inter,sans-serif;color:#065f46;">'
+                    f'✅ <b>No priority modes flagged</b> — nothing alarming in the IQS history for {sel_gr_grower}.'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
             st.markdown("---")
 
-            # ── Variety mix + Bins by variety ─────────────────
-            vm_l, vm_r = st.columns(2)
+            # ── Variety mix ───────────────────────────────────
+            vm_l, vm_r = st.columns([1.2, 1])
             with vm_l:
                 st.markdown('<div class="section-title">Variety Mix</div>', unsafe_allow_html=True)
                 if "variety" in gr_df.columns and "bins_run" in gr_df.columns:
@@ -3466,23 +3536,18 @@ elif page.endswith("Grower"):
                         st.plotly_chart(fig_vmix, use_container_width=True)
 
             with vm_r:
-                st.markdown('<div class="section-title">Bins per Variety</div>', unsafe_allow_html=True)
+                st.markdown('<div class="section-title">Variety Breakdown</div>', unsafe_allow_html=True)
                 if "variety" in gr_df.columns and "bins_run" in gr_df.columns:
-                    vbins = (gr_df.groupby("variety", as_index=False)
-                                   .agg(bins=("bins_run","sum"), runs=("run_id","count"))
-                                   .sort_values("bins", ascending=True))
-                    if not vbins.empty:
-                        fig_vb = px.bar(vbins, x="bins", y="variety", orientation="h",
-                                        text="bins", color_discrete_sequence=[BLUE],
-                                        hover_data={"runs": True},
-                                        labels={"bins":"Bins","variety":"Variety"})
-                        fig_vb.update_traces(textposition="outside",
-                                             textfont=dict(family="DM Mono, monospace", size=11, color="#0f1d35"),
-                                             cliponaxis=False, name="")
-                        apply_plot_theme(fig_vb, height=max(280, 36 * len(vbins)))
-                        fig_vb.update_layout(showlegend=False)
-                        fig_vb.update_xaxes(range=[0, vbins["bins"].max() * 1.18])
-                        st.plotly_chart(fig_vb, use_container_width=True)
+                    vstat = (gr_df.groupby("variety", as_index=False)
+                                   .agg(bins=("bins_run","sum"),
+                                        runs=("run_id","count"))
+                                   .sort_values("bins", ascending=False))
+                    vstat["avg_bins"] = (vstat["bins"] / vstat["runs"]).round(0).astype(int)
+                    vstat_disp = vstat.rename(columns={
+                        "variety":"Variety","bins":"Total Bins","runs":"Runs","avg_bins":"Avg / Run"
+                    })
+                    st.dataframe(vstat_disp, use_container_width=True, hide_index=True,
+                                 height=min(320, 60 + 38 * min(len(vstat_disp), 7)))
 
             st.markdown("---")
 
@@ -3641,9 +3706,8 @@ elif page.endswith("Grower"):
 elif page.endswith("Training"):
     st.markdown('<div class="section-title">Dec File Training Records</div>', unsafe_allow_html=True)
     st.caption(
-        "Two training streams feed the IQS detector: **IQS** submissions are sent out to Greefa "
-        "(turnaround in days/weeks), while **IFA** are trained in-house on the same day. "
-        "This page tracks velocity, turnaround, repeat training, defect coverage, and how training maps to live runs."
+        "**IQS** = sent to Greefa (turnaround in days/weeks). **IFA** = trained in-house, same day. "
+        "Tracks velocity, turnaround, repeat training, and how training maps to live runs."
     )
 
     if dec_file is None or dec_file.empty:
@@ -4041,9 +4105,8 @@ elif page.endswith("Training"):
 elif page.endswith("Solenoids"):
     st.markdown('<div class="section-title">Solenoid Replacement & Test History</div>', unsafe_allow_html=True)
     st.caption(
-        "Every recorded solenoid change or check. Search by **solenoid ID** to see that unit's full history, "
-        "or by **canal number** to see everything that's happened on a canal — repeat issues on the same canal "
-        "usually point to a deeper mechanical problem, not just the solenoid."
+        "Search by **solenoid ID** for that unit's history, or by **canal** to see repeat issues — "
+        "repeat events on one canal often point to a deeper mechanical problem."
     )
 
     if solenoids is None or solenoids.empty:
@@ -4254,10 +4317,8 @@ elif page.endswith("Solenoids"):
 elif page.endswith("Explorer"):
     st.markdown('<div class="section-title">Runs Explorer</div>', unsafe_allow_html=True)
     st.caption(
-        "Every run with the columns you'd normally have to chase across multiple sheets — joined here in one place. "
-        "Filter using the top controls or sort any column. "
-        "**Pick a Run ID from the dropdown below the table** to expand a full drill-down: notes, "
-        "linked batch info, IQS changes made during the run, and downtime events."
+        "Every run, with linked batch defects, change counts, and downtime joined in. "
+        "Filter, sort, then **pick a Run ID below the table** to drill into notes, batch, IQS changes, and downtime."
     )
 
     ex_df = runs.copy()
@@ -4483,10 +4544,8 @@ elif page.endswith("Explorer"):
 elif page.endswith("Search"):
     st.markdown('<div class="section-title">Search Across All Records</div>', unsafe_allow_html=True)
     st.caption(
-        "Type any keyword: a run ID, grower, variety, batch, mode, defect, operator name, downtime reason — "
-        "or part of any. Use the **Where** filter to narrow which dataset. Case-insensitive. "
-        "A keyword in one dataset (e.g. a defect in **Batches**) will also surface linked records "
-        "from other datasets (e.g. the **Runs** that processed those batches)."
+        "Search any keyword across every dataset. A keyword in one source (e.g. a defect in **Batches**) "
+        "also surfaces linked records elsewhere (the **Runs** that processed those batches). Case-insensitive."
     )
 
     q = (search_query or "").strip()
