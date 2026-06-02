@@ -2749,9 +2749,10 @@ elif page.endswith("IQS"):
         st.markdown('<div class="section-title">Clean & Leaf Fruit Detection Reference</div>', unsafe_allow_html=True)
         st.caption(
             "These values were captured when clean (defect-free) and leaf-on fruits were tested through the line. "
-            "Each **boundary** is the **highest value at which the clean / leaf fruit still registered** for that mode. "
-            "**If the operator's current boundary is set _above_ this value, real clean / leaf fruits will falsely trigger the mode** — "
-            "good fruit gets flagged as defective. A current boundary at-or-below the reading is fine. "
+            "Each **boundary** is the **highest reading clean / leaf fruit produced** in that test. "
+            "A mode flags fruit as defective when the reading **exceeds the current boundary**. "
+            "**If the current boundary is at-or-below this clean / leaf reading, real clean / leaf fruit will falsely trigger the mode** — "
+            "good fruit gets rejected. A current boundary *above* the reading is safe. "
             "Source: **mode_order.csv**."
         )
 
@@ -2806,33 +2807,36 @@ elif page.endswith("IQS"):
                     leaf_b  = r.get("leaf_boundary")
                     cur_b   = current_boundary_by_mode.get(mode_name)
 
-                    # Alert logic: clean_boundary / leaf_boundary is the *highest*
-                    # value that registered the clean/leaf fruit. If the operator's
-                    # current boundary is set ABOVE that value, clean/leaf fruit
-                    # will falsely trigger the mode → AT RISK.
-                    # Current at-or-below the clean/leaf reading is fine.
+                    # Alert logic (corrected):
+                    # clean_boundary / leaf_boundary is the HIGHEST reading clean
+                    # or leaf fruit produced in the test. A mode flags fruit as
+                    # defective when reading > current_boundary.
+                    # → If current_boundary <= clean/leaf reading, the clean/leaf
+                    #   fruit's reading exceeds the threshold → falsely flagged → AT RISK.
+                    # → If current_boundary > clean/leaf reading, clean/leaf fruit
+                    #   stays under the threshold → SAFE.
                     clean_status = "—"
                     leaf_status  = "—"
                     if pd.notna(clean_b) and cur_b is not None:
-                        if cur_b > clean_b:
+                        if cur_b <= clean_b:
                             clean_status = "⚠️ AT RISK"
                             clean_alerts.append({
                                 "Mode": mode_name,
                                 "Clean Reading Max": _fmt_boundary(clean_b),
                                 "Current Boundary": _fmt_boundary(cur_b),
-                                "Excess": _fmt_boundary(cur_b - clean_b),
+                                "Shortfall": _fmt_boundary(clean_b - cur_b),
                                 "Clean Amounts Tested": _fmt_amount(r.get("clean_amounts")),
                             })
                         else:
                             clean_status = "✅ Safe"
                     if pd.notna(leaf_b) and cur_b is not None:
-                        if cur_b > leaf_b:
+                        if cur_b <= leaf_b:
                             leaf_status = "⚠️ AT RISK"
                             leaf_alerts.append({
                                 "Mode": mode_name,
                                 "Leaf Reading Max": _fmt_boundary(leaf_b),
                                 "Current Boundary": _fmt_boundary(cur_b),
-                                "Excess": _fmt_boundary(cur_b - leaf_b),
+                                "Shortfall": _fmt_boundary(leaf_b - cur_b),
                                 "Leaf Amounts Tested": _fmt_amount(r.get("leaf_amounts")),
                             })
                         else:
@@ -2870,13 +2874,13 @@ elif page.endswith("IQS"):
                 cl_k3.markdown(kpi_html(
                     "Clean-Fruit Alerts",
                     f"{n_clean_at_risk}",
-                    "current boundary > clean reading" if n_clean_at_risk else "all safe",
+                    "current boundary ≤ clean reading max" if n_clean_at_risk else "all safe",
                     "down" if n_clean_at_risk else "up"
                 ), unsafe_allow_html=True)
                 cl_k4.markdown(kpi_html(
                     "Leaf-Fruit Alerts",
                     f"{n_leaf_at_risk}",
-                    "current boundary > leaf reading" if n_leaf_at_risk else "all safe",
+                    "current boundary ≤ leaf reading max" if n_leaf_at_risk else "all safe",
                     "down" if n_leaf_at_risk else "up"
                 ), unsafe_allow_html=True)
 
@@ -2889,7 +2893,7 @@ elif page.endswith("IQS"):
                         if clean_alerts:
                             n = len(clean_alerts)
                             st.markdown(
-                                f'<div class="alert-card">🟢⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary <b>above</b> the clean-fruit reading — clean fruit will register and may be misread as defective.</div>',
+                                f'<div class="alert-card">🟢⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary <b>at-or-below</b> the clean-fruit reading max — clean fruit will exceed the threshold and be falsely flagged as defective.</div>',
                                 unsafe_allow_html=True
                             )
                             st.dataframe(pd.DataFrame(clean_alerts),
@@ -2897,7 +2901,7 @@ elif page.endswith("IQS"):
                                          height=min(260, 50 + 38 * min(n, 5)))
                         else:
                             st.markdown(
-                                '<div class="good-card">🟢 All current boundaries sit at-or-below the clean-fruit reading — no false clean-fruit triggers expected.</div>',
+                                '<div class="good-card">🟢 All current boundaries sit above the clean-fruit reading max — clean fruit stays under the threshold.</div>',
                                 unsafe_allow_html=True
                             )
 
@@ -2905,7 +2909,7 @@ elif page.endswith("IQS"):
                         if leaf_alerts:
                             n = len(leaf_alerts)
                             st.markdown(
-                                f'<div class="alert-card">🍃⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary <b>above</b> the leaf-fruit reading — leaf-on fruit will register and may be misread as defective.</div>',
+                                f'<div class="alert-card">🍃⚠️ <b>{n} mode{"s" if n != 1 else ""}</b> with current boundary <b>at-or-below</b> the leaf-fruit reading max — leaf-on fruit will exceed the threshold and be falsely flagged as defective.</div>',
                                 unsafe_allow_html=True
                             )
                             st.dataframe(pd.DataFrame(leaf_alerts),
@@ -2913,7 +2917,7 @@ elif page.endswith("IQS"):
                                          height=min(260, 50 + 38 * min(n, 5)))
                         else:
                             st.markdown(
-                                '<div class="good-card">🍃 All current boundaries sit at-or-below the leaf-fruit reading — no false leaf-fruit triggers expected.</div>',
+                                '<div class="good-card">🍃 All current boundaries sit above the leaf-fruit reading max — leaf-on fruit stays under the threshold.</div>',
                                 unsafe_allow_html=True
                             )
 
@@ -2979,7 +2983,7 @@ elif page.endswith("IQS"):
                         st.markdown("")
                         st.markdown(
                             '<div style="font-size:0.85rem;font-weight:600;color:var(--ink);margin:8px 0;">'
-                            'Max clean / leaf readings vs current settings — bars to the <b>right</b> of either reading are at-risk</div>',
+                            'Max clean / leaf readings vs current settings — when the <b>Current setting</b> bar is <b>shorter than or equal to</b> a Clean or Leaf reading bar, that mode is at-risk</div>',
                             unsafe_allow_html=True
                         )
                         fig_cl = px.bar(
