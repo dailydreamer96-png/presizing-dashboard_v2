@@ -2753,6 +2753,7 @@ elif page.endswith("IQS"):
             "A mode flags fruit as defective when the reading **exceeds the current boundary**. "
             "**If the current boundary is at-or-below this clean / leaf reading, real clean / leaf fruit will falsely trigger the mode** — "
             "good fruit gets rejected. A current boundary *above* the reading is safe. "
+            "**Boundary = 0** means the mode is **off** and nothing is being detected. "
             "Source: **mode_order.csv**."
         )
 
@@ -2799,6 +2800,7 @@ elif page.endswith("IQS"):
 
                 clean_alerts = []   # list of dicts for at-risk modes (clean)
                 leaf_alerts  = []   # list of dicts for at-risk modes (leaf)
+                inactive_modes = [] # current_boundary == 0 → mode is OFF, nothing flagged
                 rows_for_disp = []
 
                 for _, r in cl_ref.iterrows():
@@ -2811,36 +2813,54 @@ elif page.endswith("IQS"):
                     # clean_boundary / leaf_boundary is the HIGHEST reading clean
                     # or leaf fruit produced in the test. A mode flags fruit as
                     # defective when reading > current_boundary.
-                    # → If current_boundary <= clean/leaf reading, the clean/leaf
-                    #   fruit's reading exceeds the threshold → falsely flagged → AT RISK.
-                    # → If current_boundary > clean/leaf reading, clean/leaf fruit
-                    #   stays under the threshold → SAFE.
+                    #
+                    # → current_boundary == 0  → mode is OFF, nothing flagged
+                    #                            (not at-risk, but worth knowing)
+                    # → cur_b <= clean/leaf reading (and cur_b > 0)
+                    #                          → clean/leaf fruit's reading can
+                    #                            exceed the threshold → AT RISK
+                    # → cur_b >  clean/leaf reading
+                    #                          → clean/leaf fruit stays under
+                    #                            the threshold → SAFE
                     clean_status = "—"
                     leaf_status  = "—"
-                    if pd.notna(clean_b) and cur_b is not None:
-                        if cur_b <= clean_b:
-                            clean_status = "⚠️ AT RISK"
-                            clean_alerts.append({
-                                "Mode": mode_name,
-                                "Clean Reading Max": _fmt_boundary(clean_b),
-                                "Current Boundary": _fmt_boundary(cur_b),
-                                "Shortfall": _fmt_boundary(clean_b - cur_b),
-                                "Clean Amounts Tested": _fmt_amount(r.get("clean_amounts")),
-                            })
-                        else:
-                            clean_status = "✅ Safe"
-                    if pd.notna(leaf_b) and cur_b is not None:
-                        if cur_b <= leaf_b:
-                            leaf_status = "⚠️ AT RISK"
-                            leaf_alerts.append({
-                                "Mode": mode_name,
-                                "Leaf Reading Max": _fmt_boundary(leaf_b),
-                                "Current Boundary": _fmt_boundary(cur_b),
-                                "Shortfall": _fmt_boundary(leaf_b - cur_b),
-                                "Leaf Amounts Tested": _fmt_amount(r.get("leaf_amounts")),
-                            })
-                        else:
-                            leaf_status = "✅ Safe"
+                    is_inactive  = (cur_b is not None and cur_b == 0)
+
+                    if is_inactive:
+                        # Mode is off — record once, skip clean/leaf risk evaluation
+                        clean_status = "⏸ Inactive"
+                        leaf_status  = "⏸ Inactive"
+                        inactive_modes.append({
+                            "Mode": mode_name,
+                            "Clean Reading Max": _fmt_boundary(clean_b),
+                            "Leaf Reading Max":  _fmt_boundary(leaf_b),
+                            "Current Boundary": "0 (off)",
+                        })
+                    else:
+                        if pd.notna(clean_b) and cur_b is not None:
+                            if cur_b <= clean_b:
+                                clean_status = "⚠️ AT RISK"
+                                clean_alerts.append({
+                                    "Mode": mode_name,
+                                    "Clean Reading Max": _fmt_boundary(clean_b),
+                                    "Current Boundary": _fmt_boundary(cur_b),
+                                    "Shortfall": _fmt_boundary(clean_b - cur_b),
+                                    "Clean Amounts Tested": _fmt_amount(r.get("clean_amounts")),
+                                })
+                            else:
+                                clean_status = "✅ Safe"
+                        if pd.notna(leaf_b) and cur_b is not None:
+                            if cur_b <= leaf_b:
+                                leaf_status = "⚠️ AT RISK"
+                                leaf_alerts.append({
+                                    "Mode": mode_name,
+                                    "Leaf Reading Max": _fmt_boundary(leaf_b),
+                                    "Current Boundary": _fmt_boundary(cur_b),
+                                    "Shortfall": _fmt_boundary(leaf_b - cur_b),
+                                    "Leaf Amounts Tested": _fmt_amount(r.get("leaf_amounts")),
+                                })
+                            else:
+                                leaf_status = "✅ Safe"
 
                     rows_for_disp.append({
                         "#": int(r["mode_order"]) if pd.notna(r.get("mode_order")) else None,
@@ -2920,6 +2940,23 @@ elif page.endswith("IQS"):
                                 '<div class="good-card">🍃 All current boundaries sit above the leaf-fruit reading max — leaf-on fruit stays under the threshold.</div>',
                                 unsafe_allow_html=True
                             )
+
+                # ── Inactive modes callout (boundary == 0) ─────
+                if inactive_modes:
+                    st.markdown("")
+                    n_inactive = len(inactive_modes)
+                    st.markdown(
+                        f'<div style="background:#1a2744;border-left:4px solid #7a90b0;border-radius:8px;'
+                        f'padding:12px 16px;margin:8px 0;color:#cdd9ec;font-family:Inter,sans-serif;font-size:0.92rem;">'
+                        f'⏸ <b style="color:#fff;">{n_inactive} mode{"s" if n_inactive != 1 else ""}</b> currently set to '
+                        f'<b style="color:#fff;">boundary&nbsp;=&nbsp;0</b> — the mode is <b>off</b>, no fruit will be detected. '
+                        f'Not at-risk, but make sure this is intentional.'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                    st.dataframe(pd.DataFrame(inactive_modes),
+                                 use_container_width=True, hide_index=True,
+                                 height=min(220, 50 + 38 * min(n_inactive, 5)))
 
                 # ── Full reference table with view selector ─────
                 st.markdown("")
