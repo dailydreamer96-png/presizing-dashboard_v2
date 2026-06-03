@@ -169,6 +169,19 @@ st.markdown("""
     margin-bottom: 18px;
     box-shadow: 0 1px 4px rgba(15, 29, 53, 0.04);
   }
+
+  /* Defect pill buttons — compact, secondary, fits inline */
+  div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"][key^="defbtn_"],
+  button[data-testid="stBaseButton-secondary"]:has(span:first-child) {
+    /* nothing here — selector intentionally loose so default secondary style applies */
+  }
+  /* Inline defect-row spacing */
+  .defect-pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 10px 0;
+  }
   .filters-card-title {
     color: var(--ink);
     font-family: 'Inter', sans-serif;
@@ -666,6 +679,101 @@ def summarize_boundaries(series):
         except: return float("inf")
     all_sorted = ", ".join(sorted(vals.unique().tolist(), key=sort_key))
     return top_3, all_sorted
+
+# ─────────────────────────────────────────────────────────────
+# DEFECT IMAGE LIBRARY
+#   Folder layout (relative to dashboard file):
+#     defect_images/<variety>/<defect>.jpg|png|jpeg|webp
+#     defect_images/_shared/<defect>.jpg ...   (optional fallback)
+#   File names are matched case-insensitively, with spaces and
+#   hyphens treated as underscores so the same picture covers
+#   "crack stem", "crack_stem", and "Crack-Stem".
+# ─────────────────────────────────────────────────────────────
+DEFECT_IMG_ROOT = "defect_images"
+DEFECT_IMG_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+def _normalize_defect_name(name):
+    """Normalize a defect string for filename matching."""
+    if name is None:
+        return ""
+    s = str(name).strip().lower()
+    for ch in (" ", "-", "."):
+        s = s.replace(ch, "_")
+    while "__" in s:
+        s = s.replace("__", "_")
+    return s.strip("_")
+
+@st.cache_data(show_spinner=False)
+def _list_defect_images():
+    """One-time cached scan of the defect_images directory.
+    Returns dict {(variety_lc, normalized_defect): path}."""
+    catalog = {}
+    if not os.path.isdir(DEFECT_IMG_ROOT):
+        return catalog
+    for var_folder in os.listdir(DEFECT_IMG_ROOT):
+        var_path = os.path.join(DEFECT_IMG_ROOT, var_folder)
+        if not os.path.isdir(var_path):
+            continue
+        var_key = var_folder.strip().lower()
+        for fname in os.listdir(var_path):
+            stem, ext = os.path.splitext(fname)
+            if ext.lower() not in DEFECT_IMG_EXTS:
+                continue
+            catalog[(var_key, _normalize_defect_name(stem))] = os.path.join(var_path, fname)
+    return catalog
+
+def find_defect_image(defect, variety=None):
+    """Locate an image for a given defect + variety.
+    Try variety folder first, then _shared. Returns path or None."""
+    catalog = _list_defect_images()
+    if not catalog:
+        return None
+    norm = _normalize_defect_name(defect)
+    if not norm:
+        return None
+    if variety:
+        var_key = str(variety).strip().lower()
+        path = catalog.get((var_key, norm))
+        if path:
+            return path
+    return catalog.get(("_shared", norm))
+
+@st.dialog("Defect reference")
+def show_defect_dialog(defect, variety=None):
+    """Modal popup showing the photo for a defect."""
+    title_variety = (str(variety).replace("_", " ").title() + " · ") if variety else ""
+    st.markdown(
+        f"<div style='font-family:Inter,sans-serif;font-size:1.1rem;font-weight:700;"
+        f"color:#0f1d35;margin-bottom:6px;'>{title_variety}"
+        f"<span style='color:#1E90FF;'>{defect}</span></div>",
+        unsafe_allow_html=True,
+    )
+    img_path = find_defect_image(defect, variety)
+    if img_path and os.path.isfile(img_path):
+        st.image(img_path, use_container_width=True)
+        st.caption(f"📁  `{img_path}`")
+    else:
+        tried_var = (variety or "(variety folder)").strip().lower() if variety else "(variety folder)"
+        expected = f"{DEFECT_IMG_ROOT}/{tried_var}/{_normalize_defect_name(defect)}.jpg"
+        st.info(
+            f"📷 **No image yet for this defect.**\n\n"
+            f"To add one, save a photo named `{_normalize_defect_name(defect)}.jpg` "
+            f"(or .png/.jpeg/.webp) at:\n\n"
+            f"`{expected}`\n\n"
+            f"Then push to GitHub and the image will appear here automatically."
+        )
+
+def defect_button(defect, variety=None, key_suffix=""):
+    """Render a small inline button. Clicking opens the defect-image dialog.
+    Works even when the image is missing — the dialog explains where to put it."""
+    if defect is None or str(defect).strip() == "":
+        return
+    label = str(defect)
+    has_img = find_defect_image(label, variety) is not None
+    icon = "🖼" if has_img else "📷"
+    btn_key = f"defbtn_{variety or 'any'}_{_normalize_defect_name(label)}_{key_suffix}"
+    if st.button(f"{icon}  {label}", key=btn_key, help="Click to view the defect photo"):
+        show_defect_dialog(label, variety)
 
 # ─────────────────────────────────────────────────────────────
 # LOAD DATA
@@ -2449,6 +2557,12 @@ elif page.endswith("IQS"):
                     key="m_reason_df",
                 )
 
+                # Photo button for the picked defect (variety-aware)
+                if selected_reason != "Select a defect…":
+                    photo_variety = (selected_mode_variety
+                                     if selected_mode_variety != "All varieties" else None)
+                    defect_button(selected_reason, variety=photo_variety, key_suffix="iqs_df_step1")
+
                 related_modes = pd.DataFrame()
                 if selected_reason != "Select a defect…":
                     rdf = filtered_mode.copy()
@@ -2547,6 +2661,9 @@ elif page.endswith("IQS"):
                 )
 
                 if selected_defect_md != "Select a defect…":
+                    photo_variety = (selected_mode_variety
+                                     if selected_mode_variety != "All varieties" else None)
+                    defect_button(selected_defect_md, variety=photo_variety, key_suffix="iqs_md_step2")
                     rdf = filtered_mode.copy()
                     rdf["reason_item"] = rdf["reason"].fillna("").astype(str).str.split(",")
                     rdf = rdf.explode("reason_item")
@@ -3698,11 +3815,24 @@ elif page.endswith("Grower"):
                     gr_batches = gr_batches[gr_batches["variety"].astype(str) == sel_gr_variety]
                 defect_cols = [c for c in ["defect_1","defect_2","defect_3"] if c in gr_batches.columns]
                 if defect_cols and not gr_batches.empty:
-                    all_defects = []
-                    for c in defect_cols:
-                        all_defects.extend(gr_batches[c].dropna().astype(str).str.strip().tolist())
-                    all_defects = [d for d in all_defects if d and d != "—"]
-                    if all_defects:
+                    # Build (defect → most-common variety) map so the photo lookup
+                    # can pick the variety-specific folder when the user picked
+                    # "All varieties" at the top.
+                    defect_variety_pairs = []
+                    for _, brow in gr_batches.iterrows():
+                        var = brow.get("variety")
+                        for c in defect_cols:
+                            d = brow.get(c)
+                            if pd.notna(d) and str(d).strip() and str(d).strip() != "—":
+                                defect_variety_pairs.append((str(d).strip(), str(var) if pd.notna(var) else None))
+                    if defect_variety_pairs:
+                        from collections import Counter
+                        defect_to_variety = {}
+                        for d, v in defect_variety_pairs:
+                            defect_to_variety.setdefault(d, Counter())[v] += 1
+                        defect_to_variety = {d: cnt.most_common(1)[0][0] for d, cnt in defect_to_variety.items()}
+
+                        all_defects = [d for d, _ in defect_variety_pairs]
                         dc = pd.Series(all_defects).value_counts().head(15).reset_index()
                         dc.columns = ["Defect","Count"]
                         dc_asc = dc.sort_values("Count", ascending=True)
@@ -3715,6 +3845,15 @@ elif page.endswith("Grower"):
                         fig_dc.update_layout(showlegend=False)
                         fig_dc.update_xaxes(range=[0, dc_asc["Count"].max() * 1.18])
                         st.plotly_chart(fig_dc, use_container_width=True)
+
+                        # Defect-photo pills
+                        st.caption("🖼 = photo available · 📷 = no photo yet. Click a defect to view its reference image.")
+                        pill_cols = st.columns(5)
+                        for i, defect_name in enumerate(dc["Defect"].tolist()):
+                            target_var = (sel_gr_variety if sel_gr_variety != "All varieties"
+                                          else defect_to_variety.get(defect_name))
+                            with pill_cols[i % 5]:
+                                defect_button(defect_name, variety=target_var, key_suffix=f"grower_def_{i}")
                     else:
                         st.info("No defect data recorded against this grower's batches.")
                 else:
@@ -4040,6 +4179,13 @@ elif page.endswith("Training"):
                     fig_dc.update_layout(showlegend=False, xaxis_title=None)
                     fig_dc.update_xaxes(range=[0, def_counts_asc["Count"].max() * 1.15])
                     st.plotly_chart(fig_dc, use_container_width=True)
+
+                    # Clickable defect-photo pills — operator can click to see what each looks like
+                    st.caption("🖼 = photo available · 📷 = no photo yet. Click a defect to see its reference image.")
+                    pill_cols = st.columns(5)
+                    for i, defect_name in enumerate(def_counts["Defect"].tolist()):
+                        with pill_cols[i % 5]:
+                            defect_button(defect_name, variety=None, key_suffix=f"train_top_{i}")
 
             st.markdown("---")
 
@@ -4533,6 +4679,25 @@ elif page.endswith("Explorer"):
                                 st.markdown(f"**Batch notes:** {batch_notes}")
                             else:
                                 st.caption("No batch notes recorded.")
+
+                            # Clickable defect pills
+                            batch_defects = []
+                            for c in ("defect_1","defect_2","defect_3"):
+                                v = b_row.get(c)
+                                if pd.notna(v) and str(v).strip() and str(v).strip() != "—":
+                                    batch_defects.append(str(v).strip())
+                            if batch_defects:
+                                st.markdown(
+                                    '<div style="font-size:0.82rem;font-weight:600;color:var(--ink);margin:8px 0 4px 0;">'
+                                    'Defect photos for this batch:</div>',
+                                    unsafe_allow_html=True
+                                )
+                                target_var = b_row.get("variety") if pd.notna(b_row.get("variety")) else row.get("variety")
+                                pill_cols = st.columns(min(3, len(batch_defects)))
+                                for i, defect_name in enumerate(batch_defects):
+                                    with pill_cols[i % len(pill_cols)]:
+                                        defect_button(defect_name, variety=target_var,
+                                                      key_suffix=f"exp_batch_{picked_run}_{i}")
                         else:
                             st.caption(f"No batch matching `{row['batch_id']}` in batches_raw.csv.")
                     else:
