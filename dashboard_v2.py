@@ -1127,7 +1127,8 @@ with nav_col1:
     page = st.radio(
         "Page",
         ["📊  Summary", "🎯  IQS", "🍏  Quality", "👷  Operators",
-         "🌾  Grower", "🧠  Training", "🔧  Solenoids", "🗂️  Explorer", "🔎  Search"],
+         "🌾  Grower", "🧠  Training", "🔧  Solenoids", "📸  Defects",
+         "🗂️  Explorer", "🔎  Search"],
         label_visibility="collapsed",
         horizontal=True,
         key="nav_page",
@@ -1370,6 +1371,24 @@ if st.session_state.show_filters:
                     issue_opts = sorted({i for items in solenoids["issue_list"] for i in (items or [])})
                 sel_sol_issue = st.selectbox("⚠️  Issue", ["All issues"] + issue_opts, key="sol_issue")
 
+    elif page.endswith("Defects"):
+        df1, df2, df3 = st.columns([2, 1, 1])
+        with df1:
+            sel_def_q = st.text_input(
+                "🔎  Search a defect",
+                placeholder="e.g. bruise, decay, scab…",
+                key="def_q",
+            )
+        with df2:
+            var_opts_d = sorted(runs["variety"].dropna().astype(str).unique()) if "variety" in runs.columns else []
+            sel_def_variety = st.selectbox("🍎  Variety", ["All varieties"] + var_opts_d, key="def_variety")
+        with df3:
+            sel_def_view = st.selectbox(
+                "View",
+                ["Photos only", "All defects (incl. missing)"],
+                key="def_view",
+            )
+
     elif page.endswith("Search"):
         s1, s2 = st.columns([3, 1])
         with s1:
@@ -1454,6 +1473,10 @@ else:
         sel_sol_status = st.session_state.get("sol_status", "All statuses")
         sel_sol_lane   = st.session_state.get("sol_lane", "All lanes")
         sel_sol_issue  = st.session_state.get("sol_issue", "All issues")
+    elif page.endswith("Defects"):
+        sel_def_q       = st.session_state.get("def_q", "")
+        sel_def_variety = st.session_state.get("def_variety", "All varieties")
+        sel_def_view    = st.session_state.get("def_view", "Photos only")
     elif page.endswith("Search"):
         search_query = st.session_state.get("search_q", "")
         search_scope = st.session_state.get("search_scope", "All sources")
@@ -4553,6 +4576,185 @@ elif page.endswith("Solenoids"):
             sort_col = "Date" if "Date" in full_disp.columns else full_disp.columns[0]
             st.dataframe(full_disp.sort_values(sort_col, ascending=False),
                          use_container_width=True, hide_index=True, height=400)
+
+
+# ═══════════════════════════════════════════════════════════════
+# DEFECTS PAGE — visual library / reference photos
+# ═══════════════════════════════════════════════════════════════
+elif page.endswith("Defects"):
+    st.markdown('<div class="section-title">Defect Photo Library</div>', unsafe_allow_html=True)
+    st.caption(
+        "A visual reference for every defect we see on the line. "
+        "Click any defect name to enlarge the photo. Filter by variety, search by name, "
+        "or switch to **All defects** to see which photos are still missing."
+    )
+
+    # ── Gather every defect seen anywhere in the data ─────
+    # Build a (defect, variety) frequency map so we know which variety to
+    # use when looking up the picture, and how often each defect appears.
+    defect_variety_counts = {}   # {defect_lc: {variety: count}}
+    defect_display_name   = {}   # {defect_lc: original-case label for display}
+
+    def _record(defect_raw, variety_raw):
+        if defect_raw is None: return
+        d = str(defect_raw).strip()
+        if not d or d == "—" or d.lower() == "nan":
+            return
+        key = d.lower()
+        defect_display_name.setdefault(key, d)
+        var = str(variety_raw).strip() if (variety_raw is not None and pd.notna(variety_raw)) else None
+        if var:
+            defect_variety_counts.setdefault(key, {})
+            defect_variety_counts[key][var] = defect_variety_counts[key].get(var, 0) + 1
+        else:
+            defect_variety_counts.setdefault(key, {})
+
+    # From batches_raw
+    if batches is not None and not batches.empty:
+        defect_cols = [c for c in ["defect_1","defect_2","defect_3"] if c in batches.columns]
+        for _, br in batches.iterrows():
+            v = br.get("variety")
+            for c in defect_cols:
+                _record(br.get(c), v)
+
+    # From dec_file (defects_list)
+    if dec_file is not None and not dec_file.empty and "defects_list" in dec_file.columns:
+        for _, tr_row in dec_file.iterrows():
+            v = tr_row.get("variety")
+            for d in (tr_row.get("defects_list") or []):
+                _record(d, v)
+
+    # From changes_raw (reason field — comma-separated)
+    if changes is not None and not changes.empty and "reason" in changes.columns:
+        ch_with_var = changes.copy()
+        if "run_id" in ch_with_var.columns and "run_id" in runs.columns and "variety" in runs.columns:
+            run_var = runs.set_index("run_id")["variety"].to_dict()
+            ch_with_var["variety_lk"] = ch_with_var["run_id"].map(run_var)
+        else:
+            ch_with_var["variety_lk"] = None
+        for _, ch_row in ch_with_var.iterrows():
+            reason = ch_row.get("reason")
+            if pd.notna(reason):
+                for part in str(reason).split(","):
+                    _record(part.strip(), ch_row.get("variety_lk"))
+
+    if not defect_variety_counts:
+        st.info("No defect names found in any CSV yet.")
+    else:
+        # Resolve a primary variety for each defect = the most common one
+        def _primary_variety(d_lc):
+            counts = defect_variety_counts.get(d_lc, {})
+            if not counts: return None
+            return max(counts.items(), key=lambda kv: kv[1])[0]
+
+        # Apply variety filter
+        all_defect_keys = sorted(defect_variety_counts.keys())
+        if sel_def_variety != "All varieties":
+            all_defect_keys = [
+                d for d in all_defect_keys
+                if sel_def_variety in defect_variety_counts[d]
+                or not defect_variety_counts[d]   # variety-unknown defects pass through
+            ]
+
+        # Apply free-text filter
+        q = (sel_def_q or "").strip().lower()
+        if q:
+            all_defect_keys = [d for d in all_defect_keys if q in d]
+
+        # Build display rows
+        rows = []
+        for d_lc in all_defect_keys:
+            display = defect_display_name[d_lc]
+            # Variety used for lookup: filter selection if specific, else primary
+            lookup_variety = (sel_def_variety
+                              if sel_def_variety != "All varieties"
+                              else _primary_variety(d_lc))
+            img = find_defect_image(display, lookup_variety)
+            rows.append({
+                "defect": display,
+                "variety": lookup_variety,
+                "has_img": img is not None,
+                "img_path": img,
+                "occurrences": sum(defect_variety_counts[d_lc].values()),
+            })
+
+        # Filter by view mode
+        if sel_def_view == "Photos only":
+            rows_to_show = [r for r in rows if r["has_img"]]
+        else:
+            rows_to_show = rows
+
+        # ── KPI strip ─────────────────────────────────────
+        total_known    = len(rows)
+        total_with_img = sum(1 for r in rows if r["has_img"])
+        coverage_pct   = (total_with_img / total_known * 100) if total_known else 0
+
+        k1, k2, k3 = st.columns(3)
+        k1.markdown(kpi_html("Defects Tracked", f"{total_known:,}",
+                             "in current filter"), unsafe_allow_html=True)
+        k2.markdown(kpi_html("With Photos", f"{total_with_img:,}",
+                             f"{total_known - total_with_img} still missing"
+                             if (total_known - total_with_img) else "all covered"),
+                    unsafe_allow_html=True)
+        k3.markdown(kpi_html("Coverage", f"{coverage_pct:.0f}%",
+                             "of tracked defects"), unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        if not rows_to_show:
+            if sel_def_view == "Photos only":
+                st.info(
+                    "No photos in this view yet. Switch to **All defects (incl. missing)** "
+                    "to see which defects still need a photo."
+                )
+            else:
+                st.info("No defects match the current filter.")
+        else:
+            # Sort: photos first, then alphabetic (within "All defects" view).
+            # Photos-only view is just alphabetic.
+            rows_to_show = sorted(rows_to_show,
+                                  key=lambda r: (not r["has_img"], r["defect"].lower()))
+
+            st.caption(
+                f"Showing **{len(rows_to_show)}** defect{'s' if len(rows_to_show) != 1 else ''}. "
+                "Click a defect name to enlarge the photo."
+            )
+
+            # ── Gallery grid (3 columns) ─────────────────
+            COLS = 3
+            for chunk_start in range(0, len(rows_to_show), COLS):
+                chunk = rows_to_show[chunk_start:chunk_start + COLS]
+                grid_cols = st.columns(COLS)
+                for slot_i in range(COLS):
+                    with grid_cols[slot_i]:
+                        if slot_i >= len(chunk):
+                            continue
+                        item = chunk[slot_i]
+                        if item["has_img"]:
+                            # Thumbnail + clickable name beneath
+                            st.image(item["img_path"], use_container_width=True)
+                        else:
+                            # Friendly placeholder so the to-do is visible
+                            st.markdown(
+                                '<div style="width:100%;aspect-ratio:1/1;background:#e8edf5;'
+                                'border:2px dashed #b8cce8;border-radius:8px;display:flex;'
+                                'align-items:center;justify-content:center;color:#7a90b0;'
+                                'font-family:Inter,sans-serif;font-size:0.85rem;text-align:center;'
+                                'padding:12px;">📷<br><span style="margin-top:6px;">No photo yet</span></div>',
+                                unsafe_allow_html=True
+                            )
+                        # Defect-name link beneath thumbnail
+                        defect_button(item["defect"], variety=item["variety"],
+                                      key_suffix=f"lib_{chunk_start}_{slot_i}")
+                        # Small meta line
+                        var_label = (item["variety"].replace("_", " ").title()
+                                     if item["variety"] else "Variety not recorded")
+                        st.markdown(
+                            f'<div style="font-family:DM Mono,monospace;font-size:0.72rem;'
+                            f'color:#7a90b0;margin:-2px 0 14px 0;">{var_label} · '
+                            f'{item["occurrences"]} occurrence{"s" if item["occurrences"] != 1 else ""}</div>',
+                            unsafe_allow_html=True
+                        )
 
 
 # ═══════════════════════════════════════════════════════════════
