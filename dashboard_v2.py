@@ -170,17 +170,68 @@ st.markdown("""
     box-shadow: 0 1px 4px rgba(15, 29, 53, 0.04);
   }
 
-  /* Defect pill buttons — compact, secondary, fits inline */
-  div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"][key^="defbtn_"],
-  button[data-testid="stBaseButton-secondary"]:has(span:first-child) {
-    /* nothing here — selector intentionally loose so default secondary style applies */
+  /* Defect text-links — render st.button(type="tertiary") as a clean inline hyperlink.
+     No border, no background, no rounded chrome — just blue text that underlines on hover.
+     We target tertiary buttons globally (and as a fallback, secondary buttons whose key
+     starts with "defbtn_"). */
+  button[data-testid="stBaseButton-tertiary"],
+  button[kind="tertiary"],
+  div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"][aria-describedby*="defbtn_"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    width: auto !important;
+    color: #1E90FF !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+    text-decoration: none !important;
+    text-align: left !important;
+    line-height: 1.4 !important;
+    cursor: pointer !important;
+    transition: color 0.12s ease, text-decoration-color 0.12s ease !important;
   }
-  /* Inline defect-row spacing */
-  .defect-pill-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 4px 0 10px 0;
+  button[data-testid="stBaseButton-tertiary"] p,
+  button[kind="tertiary"] p,
+  button[data-testid="stBaseButton-tertiary"] div,
+  button[kind="tertiary"] div {
+    color: #1E90FF !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  button[data-testid="stBaseButton-tertiary"]:hover,
+  button[kind="tertiary"]:hover {
+    color: #0f6dd6 !important;
+    text-decoration: underline !important;
+    text-decoration-thickness: 1.5px !important;
+    text-underline-offset: 3px !important;
+    background: transparent !important;
+  }
+  button[data-testid="stBaseButton-tertiary"]:hover p,
+  button[kind="tertiary"]:hover p {
+    color: #0f6dd6 !important;
+  }
+  button[data-testid="stBaseButton-tertiary"]:focus,
+  button[kind="tertiary"]:focus,
+  button[data-testid="stBaseButton-tertiary"]:active,
+  button[kind="tertiary"]:active {
+    box-shadow: none !important;
+    outline: none !important;
+    background: transparent !important;
+  }
+  /* Tighten the wrapper div so links sit close to surrounding text */
+  div[data-testid="stButton"]:has(button[data-testid="stBaseButton-tertiary"]),
+  div[data-testid="stButton"]:has(button[kind="tertiary"]) {
+    width: auto !important;
+    display: inline-block !important;
+    margin: 0 !important;
   }
   .filters-card-title {
     color: var(--ink);
@@ -751,7 +802,6 @@ def show_defect_dialog(defect, variety=None):
     img_path = find_defect_image(defect, variety)
     if img_path and os.path.isfile(img_path):
         st.image(img_path, use_container_width=True)
-        st.caption(f"📁  `{img_path}`")
     else:
         tried_var = (variety or "(variety folder)").strip().lower() if variety else "(variety folder)"
         expected = f"{DEFECT_IMG_ROOT}/{tried_var}/{_normalize_defect_name(defect)}.jpg"
@@ -764,15 +814,22 @@ def show_defect_dialog(defect, variety=None):
         )
 
 def defect_button(defect, variety=None, key_suffix=""):
-    """Render a small inline button. Clicking opens the defect-image dialog.
-    Works even when the image is missing — the dialog explains where to put it."""
+    """Render the defect name as a clean inline text link. Clicking opens the
+    defect-image dialog. No icon, no border, no background — just the name.
+    Works even when the image is missing — the dialog explains where to add it."""
     if defect is None or str(defect).strip() == "":
         return
     label = str(defect)
-    has_img = find_defect_image(label, variety) is not None
-    icon = "🖼" if has_img else "📷"
     btn_key = f"defbtn_{variety or 'any'}_{_normalize_defect_name(label)}_{key_suffix}"
-    if st.button(f"{icon}  {label}", key=btn_key, help="Click to view the defect photo"):
+    # type="tertiary" gives Streamlit's minimal link-style button (no border/bg).
+    # CSS in the page header further restyles it to look like a true text link.
+    try:
+        clicked = st.button(label, key=btn_key, type="tertiary",
+                            help="Click to view the defect photo")
+    except Exception:
+        # Fallback for older Streamlit versions without tertiary buttons
+        clicked = st.button(label, key=btn_key, help="Click to view the defect photo")
+    if clicked:
         show_defect_dialog(label, variety)
 
 # ─────────────────────────────────────────────────────────────
@@ -3846,8 +3903,8 @@ elif page.endswith("Grower"):
                         fig_dc.update_xaxes(range=[0, dc_asc["Count"].max() * 1.18])
                         st.plotly_chart(fig_dc, use_container_width=True)
 
-                        # Defect-photo pills
-                        st.caption("🖼 = photo available · 📷 = no photo yet. Click a defect to view its reference image.")
+                        # Clickable defect names
+                        st.caption("Click any defect name below to view its reference photo.")
                         pill_cols = st.columns(5)
                         for i, defect_name in enumerate(dc["Defect"].tolist()):
                             target_var = (sel_gr_variety if sel_gr_variety != "All varieties"
@@ -4180,8 +4237,8 @@ elif page.endswith("Training"):
                     fig_dc.update_xaxes(range=[0, def_counts_asc["Count"].max() * 1.15])
                     st.plotly_chart(fig_dc, use_container_width=True)
 
-                    # Clickable defect-photo pills — operator can click to see what each looks like
-                    st.caption("🖼 = photo available · 📷 = no photo yet. Click a defect to see its reference image.")
+                    # Clickable defect names — click any to view its reference photo
+                    st.caption("Click any defect name below to view its reference photo.")
                     pill_cols = st.columns(5)
                     for i, defect_name in enumerate(def_counts["Defect"].tolist()):
                         with pill_cols[i % 5]:
@@ -4689,7 +4746,7 @@ elif page.endswith("Explorer"):
                             if batch_defects:
                                 st.markdown(
                                     '<div style="font-size:0.82rem;font-weight:600;color:var(--ink);margin:8px 0 4px 0;">'
-                                    'Defect photos for this batch:</div>',
+                                    'Click a defect to view its photo:</div>',
                                     unsafe_allow_html=True
                                 )
                                 target_var = b_row.get("variety") if pd.notna(b_row.get("variety")) else row.get("variety")
