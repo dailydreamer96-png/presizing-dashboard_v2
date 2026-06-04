@@ -31,7 +31,9 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-05-21,T207,09:41,09:45,0.07,ifa,Blue replaced a new cable
 2026-05-21,T207,11:13,11:20,0.12,flumes_full,bin stuck at SFU hence flumes full
 2026-05-28,T211,09:19,09:37,0.3,"ibin_dumper,diabolo","bin overfill, diabolo fallen"
+2026-05-28,T212,11:50,13:36,1.77,bin_arrival,bin arriving from Ardrossan
 2026-05-29,T214,07:10,07:22,0.2,bin_broken,"from the bottom, half clean the rest clean when finish"
 2026-05-29,T214,08:49,08:59,0.17,toilet,no replacement on people so we stop the machine
 2026-05-29,T214,11:08,11:13,0.08,diabolos,missing site lane 3
 2026-06-01,T215,07:18,07:25,0.12,bin_broken,missing leg and fell into the tank
+2026-06-03,T217,09:26,09:39,0.22,bin_arrival,"bins hiding behind in the coolroom, need time to clear the front bins"

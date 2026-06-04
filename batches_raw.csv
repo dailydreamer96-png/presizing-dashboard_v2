@@ -192,7 +192,8 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8711,ardrossan,gala,2026-03-09,2026-03-10,gocup,O004,dirt_stem,unders,,no,no,0,no IQS adjustement
 8712,ardrossan,gala,2026-03-05,2026-03-10,ardrossan,O004,dirt_stem,unders,,no,no,0,late IQS adjustment
 8713,bundara,granny_smith,2026-03-18,2026-03-19,B31,Z011,bitterpit,insect,color_skin,no,no,0,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
+8715,apple_thief,bravo,2026-04-22,2026-05-04,,N001,clean,scab,holes,no,no,0,new decfile applied
+8719,yuvi_bhinder_farm,pink_lady,2026-05-23,2026-05-23,,O022,holes,lenticel,sunburn_dark,no,no,35,
+8721,pottenger,pink_lady,2026-05-22,2026-05-26,,O022,bruises,dirt_stem,color_low,no,no,35,
+8722,ardrossan,kanzi,2026-04-09,2026-04-14,ardrossan,N003,average_stem,lenticel,dirt_stem,no,no,0,
+8723,ardrossan,kanzi,2026-04-02,2026-04-02,gocup,N003,average_stem,holes,dirt_stem,no,no,0,

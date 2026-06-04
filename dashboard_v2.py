@@ -775,19 +775,35 @@ def _list_defect_images():
 
 def find_defect_image(defect, variety=None):
     """Locate an image for a given defect + variety.
-    Try variety folder first, then _shared. Returns path or None."""
+
+    Lookup order:
+      1. variety folder (if variety given)
+      2. _shared folder
+      3. ANY variety folder — pick first match (so a photo uploaded once is
+         discoverable from any tab regardless of variety context)
+
+    Returns path or None."""
     catalog = _list_defect_images()
     if not catalog:
         return None
     norm = _normalize_defect_name(defect)
     if not norm:
         return None
+    # 1) Variety-specific
     if variety:
         var_key = str(variety).strip().lower()
         path = catalog.get((var_key, norm))
         if path:
             return path
-    return catalog.get(("_shared", norm))
+    # 2) _shared
+    path = catalog.get(("_shared", norm))
+    if path:
+        return path
+    # 3) Any variety — first match
+    for (vk, nk), p in catalog.items():
+        if nk == norm:
+            return p
+    return None
 
 @st.dialog("Defect reference")
 def show_defect_dialog(defect, variety=None):
@@ -814,23 +830,45 @@ def show_defect_dialog(defect, variety=None):
         )
 
 def defect_button(defect, variety=None, key_suffix=""):
-    """Render the defect name as a clean inline text link. Clicking opens the
-    defect-image dialog. No icon, no border, no background — just the name.
-    Works even when the image is missing — the dialog explains where to add it."""
+    """Render the defect name as a clean inline text link IF a photo exists.
+    If no photo exists, render nothing at all — keeps the UI tidy and reserves
+    blue link-styling for defects that are actually clickable."""
     if defect is None or str(defect).strip() == "":
-        return
+        return False
     label = str(defect)
+    if find_defect_image(label, variety) is None:
+        return False  # no photo → don't render
     btn_key = f"defbtn_{variety or 'any'}_{_normalize_defect_name(label)}_{key_suffix}"
-    # type="tertiary" gives Streamlit's minimal link-style button (no border/bg).
-    # CSS in the page header further restyles it to look like a true text link.
     try:
         clicked = st.button(label, key=btn_key, type="tertiary",
                             help="Click to view the defect photo")
     except Exception:
-        # Fallback for older Streamlit versions without tertiary buttons
         clicked = st.button(label, key=btn_key, help="Click to view the defect photo")
     if clicked:
         show_defect_dialog(label, variety)
+    return True
+
+def defects_link_row(defect_names, variety=None, key_prefix=""):
+    """Render a comma-separated row of clickable defect names — but ONLY those
+    that have a photo. Returns the count of links shown so the caller can decide
+    whether to print an explanatory caption or skip it entirely."""
+    if not defect_names:
+        return 0
+    # Deduplicate (case-insensitive) while preserving original casing
+    seen = {}
+    for d in defect_names:
+        if d is None: continue
+        s = str(d).strip()
+        if not s or s == "—": continue
+        seen.setdefault(s.lower(), s)
+    clickable = [s for s in seen.values() if find_defect_image(s, variety) is not None]
+    if not clickable:
+        return 0
+    cols = st.columns(min(6, max(1, len(clickable))))
+    for i, defect_name in enumerate(clickable):
+        with cols[i % len(cols)]:
+            defect_button(defect_name, variety=variety, key_suffix=f"{key_prefix}_{i}")
+    return len(clickable)
 
 # ─────────────────────────────────────────────────────────────
 # LOAD DATA
@@ -3926,14 +3964,27 @@ elif page.endswith("Grower"):
                         fig_dc.update_xaxes(range=[0, dc_asc["Count"].max() * 1.18])
                         st.plotly_chart(fig_dc, use_container_width=True)
 
-                        # Clickable defect names
-                        st.caption("Click any defect name below to view its reference photo.")
-                        pill_cols = st.columns(5)
-                        for i, defect_name in enumerate(dc["Defect"].tolist()):
-                            target_var = (sel_gr_variety if sel_gr_variety != "All varieties"
-                                          else defect_to_variety.get(defect_name))
-                            with pill_cols[i % 5]:
-                                defect_button(defect_name, variety=target_var, key_suffix=f"grower_def_{i}")
+                        # Defect names below — only those with photos appear as blue links.
+                        # For each defect we pass its most-recorded variety as a hint;
+                        # the lookup will fall back to other variety folders or _shared.
+                        defect_list_for_links = dc["Defect"].tolist()
+                        # Custom render so we can give each one its own variety hint
+                        clickable_defects = [
+                            d for d in defect_list_for_links
+                            if find_defect_image(d, (sel_gr_variety if sel_gr_variety != "All varieties"
+                                                     else defect_to_variety.get(d))) is not None
+                        ]
+                        if clickable_defects:
+                            pill_cols = st.columns(min(6, len(clickable_defects)))
+                            for i, defect_name in enumerate(clickable_defects):
+                                target_var = (sel_gr_variety if sel_gr_variety != "All varieties"
+                                              else defect_to_variety.get(defect_name))
+                                with pill_cols[i % len(pill_cols)]:
+                                    defect_button(defect_name, variety=target_var, key_suffix=f"grower_def_{i}")
+                            st.caption(
+                                f"📷 The blue defect names above are clickable — click one to enlarge its photo. "
+                                f"({len(clickable_defects)} of {len(defect_list_for_links)} top defects have photos.)"
+                            )
                     else:
                         st.info("No defect data recorded against this grower's batches.")
                 else:
@@ -4260,12 +4311,18 @@ elif page.endswith("Training"):
                     fig_dc.update_xaxes(range=[0, def_counts_asc["Count"].max() * 1.15])
                     st.plotly_chart(fig_dc, use_container_width=True)
 
-                    # Clickable defect names — click any to view its reference photo
-                    st.caption("Click any defect name below to view its reference photo.")
-                    pill_cols = st.columns(5)
-                    for i, defect_name in enumerate(def_counts["Defect"].tolist()):
-                        with pill_cols[i % 5]:
-                            defect_button(defect_name, variety=None, key_suffix=f"train_top_{i}")
+                    # Defect names below the chart — show ONLY those with photos
+                    # as clickable blue links. Skip caption if nothing's clickable.
+                    n_links = defects_link_row(
+                        def_counts["Defect"].tolist(),
+                        variety=None,
+                        key_prefix="train_top",
+                    )
+                    if n_links > 0:
+                        st.caption(
+                            f"📷 The blue defect names above are clickable — click one to enlarge its photo. "
+                            f"({n_links} of {len(def_counts)} top defects have photos — see the **Defects** tab for the full library.)"
+                        )
 
             st.markdown("---")
 
@@ -4699,6 +4756,63 @@ elif page.endswith("Defects"):
         k3.markdown(kpi_html("Coverage", f"{coverage_pct:.0f}%",
                              "of tracked defects"), unsafe_allow_html=True)
 
+        # ── Missing-photos callout ────────────────────────
+        # Highlights what still needs a photo, sorted by occurrence
+        # so the highest-impact gaps are at the top.
+        missing_rows = sorted(
+            [r for r in rows if not r["has_img"]],
+            key=lambda r: -r["occurrences"]
+        )
+        if missing_rows:
+            n_missing = len(missing_rows)
+            # Show the top 12 missing as a compact list
+            top_missing = missing_rows[:12]
+
+            def _fmt(r):
+                var_lbl = (r["variety"].replace("_", " ").title()
+                           if r["variety"] else "variety unknown")
+                return (
+                    f'<span style="display:inline-block;background:rgba(255,255,255,0.07);'
+                    f'border:1px solid rgba(255,255,255,0.10);border-radius:6px;'
+                    f'padding:4px 9px;margin:3px 5px 3px 0;font-family:DM Mono,monospace;'
+                    f'font-size:0.78rem;color:#cdd9ec;">'
+                    f'<b style="color:#fff;">{r["defect"]}</b> '
+                    f'<span style="color:#7a90b0;">· {var_lbl} · {r["occurrences"]}×</span>'
+                    f'</span>'
+                )
+
+            chip_html = "".join(_fmt(r) for r in top_missing)
+            more_html = (
+                f'<div style="color:#7a90b0;font-size:0.78rem;margin-top:8px;font-style:italic;">'
+                f'…and {n_missing - 12} more. Switch view to <b>All defects (incl. missing)</b> to see the full list.</div>'
+                if n_missing > 12 else ''
+            )
+
+            st.markdown(
+                f'<div style="background:#1a2744;border-left:4px solid #FFB347;border-radius:10px;'
+                f'padding:14px 18px;margin:12px 0 4px 0;font-family:Inter,sans-serif;">'
+                f'<div style="color:#FFB347;font-size:0.72rem;font-weight:700;letter-spacing:0.08em;'
+                f'text-transform:uppercase;margin-bottom:8px;">📷 Photos still needed — '
+                f'top {min(12, n_missing)} of {n_missing} missing</div>'
+                f'<div style="color:#cdd9ec;font-size:0.85rem;margin-bottom:8px;">'
+                f'These defects appear in your data but don\'t have a reference photo yet. '
+                f'Sorted by how often they\'ve been recorded — prioritise the high-count ones.</div>'
+                f'<div>{chip_html}</div>'
+                f'{more_html}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        elif total_known > 0:
+            # Everything has a photo — celebrate quietly
+            st.markdown(
+                f'<div style="background:#e8f5ee;border-left:4px solid {EMERALD};border-radius:10px;'
+                f'padding:12px 18px;margin:12px 0 4px 0;font-family:Inter,sans-serif;color:#065f46;'
+                f'font-size:0.88rem;">'
+                f'✅ <b>Every defect has a reference photo</b> in the current filter — great work.'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
         st.markdown("---")
 
         if not rows_to_show:
@@ -4731,10 +4845,12 @@ elif page.endswith("Defects"):
                             continue
                         item = chunk[slot_i]
                         if item["has_img"]:
-                            # Thumbnail + clickable name beneath
+                            # Thumbnail + clickable blue link beneath
                             st.image(item["img_path"], use_container_width=True)
+                            defect_button(item["defect"], variety=item["variety"],
+                                          key_suffix=f"lib_{chunk_start}_{slot_i}")
                         else:
-                            # Friendly placeholder so the to-do is visible
+                            # Friendly placeholder + plain (non-link) name
                             st.markdown(
                                 '<div style="width:100%;aspect-ratio:1/1;background:#e8edf5;'
                                 'border:2px dashed #b8cce8;border-radius:8px;display:flex;'
@@ -4743,9 +4859,11 @@ elif page.endswith("Defects"):
                                 'padding:12px;">📷<br><span style="margin-top:6px;">No photo yet</span></div>',
                                 unsafe_allow_html=True
                             )
-                        # Defect-name link beneath thumbnail
-                        defect_button(item["defect"], variety=item["variety"],
-                                      key_suffix=f"lib_{chunk_start}_{slot_i}")
+                            st.markdown(
+                                f'<div style="font-family:Inter,sans-serif;font-weight:600;'
+                                f'font-size:0.95rem;color:#7a90b0;margin-top:8px;">{item["defect"]}</div>',
+                                unsafe_allow_html=True
+                            )
                         # Small meta line
                         var_label = (item["variety"].replace("_", " ").title()
                                      if item["variety"] else "Variety not recorded")
@@ -4939,24 +5057,21 @@ elif page.endswith("Explorer"):
                             else:
                                 st.caption("No batch notes recorded.")
 
-                            # Clickable defect pills
+                            # Clickable defect names — only render those with photos
                             batch_defects = []
                             for c in ("defect_1","defect_2","defect_3"):
                                 v = b_row.get(c)
                                 if pd.notna(v) and str(v).strip() and str(v).strip() != "—":
                                     batch_defects.append(str(v).strip())
                             if batch_defects:
-                                st.markdown(
-                                    '<div style="font-size:0.82rem;font-weight:600;color:var(--ink);margin:8px 0 4px 0;">'
-                                    'Click a defect to view its photo:</div>',
-                                    unsafe_allow_html=True
-                                )
                                 target_var = b_row.get("variety") if pd.notna(b_row.get("variety")) else row.get("variety")
-                                pill_cols = st.columns(min(3, len(batch_defects)))
-                                for i, defect_name in enumerate(batch_defects):
-                                    with pill_cols[i % len(pill_cols)]:
-                                        defect_button(defect_name, variety=target_var,
-                                                      key_suffix=f"exp_batch_{picked_run}_{i}")
+                                n_links = defects_link_row(
+                                    batch_defects,
+                                    variety=target_var,
+                                    key_prefix=f"exp_batch_{picked_run}",
+                                )
+                                if n_links > 0:
+                                    st.caption("📷 Click a blue defect name above to view its photo.")
                         else:
                             st.caption(f"No batch matching `{row['batch_id']}` in batches_raw.csv.")
                     else:
