@@ -12,7 +12,7 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-04-15,T150,14:30,14:49,0.32,bin_drop,Mark accidentally dropped 4 bins of ACN
 2026-04-17,T154,07:00,07:23,0.38,sorting_area,Strange sound; Blue ask for continue running while waiting on his arrival
 2026-04-17,T154,07:53,10:28,2.58,dumper_area,"power cut out, a light flashed / Blue and Cameron changed some cabel?"
-2026-04-20,T157,10:03,10:59,0.93,ibin_infeed,sensor under bin
+2026-04-20,T157,10:03,10:59,0.93,ibin_filler,sensor under bin
 2026-04-20,T158,11:41,11:45,0.07,settings,"Soo forgot to close MCUap, cleaning out 1 lane"
 2026-04-27,T168,07:00,07:15,0.25,settings,Filling up water and waiting on bins
 2026-04-28,T170,07:00,07:28,0.47,sfu1,lost water due to pump popped out
@@ -37,3 +37,9 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-05-29,T214,11:08,11:13,0.08,diabolos,missing site lane 3
 2026-06-01,T215,07:18,07:25,0.12,bin_broken,missing leg and fell into the tank
 2026-06-03,T217,09:26,09:39,0.22,bin_arrival,"bins hiding behind in the coolroom, need time to clear the front bins"
+2026-06-09,T220,07:00,07:27,0.45,ibin_infeed,not able to move upwards; we use the manual tipping site
+2026-06-09,T221,11:49,12:23,0.57,settings,Waiting on update from Andrew
+2026-06-11,T228,12:18,12:30,0.2,tours,waiting on Jess to bring people on tours
+2026-06-15,T231,08:40,09:03,0.38,truck_unloading,Emma unloading the truck
+2026-06-15,T231,10:00,10:29,0.48,server,power lost
+2026-06-15,T231,10:55,11:17,0.37,server,set it back from the server

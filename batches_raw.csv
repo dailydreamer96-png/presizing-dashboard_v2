@@ -193,7 +193,18 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8712,ardrossan,gala,2026-03-05,2026-03-10,ardrossan,O004,dirt_stem,unders,,no,no,0,late IQS adjustment
 8713,bundara,granny_smith,2026-03-18,2026-03-19,B31,Z011,bitterpit,insect,color_skin,no,no,0,
 8715,apple_thief,bravo,2026-04-22,2026-05-04,,N001,clean,scab,holes,no,no,0,new decfile applied
-8719,yuvi_bhinder_farm,pink_lady,2026-05-23,2026-05-23,,O022,holes,lenticel,sunburn_dark,no,no,35,
-8721,pottenger,pink_lady,2026-05-22,2026-05-26,,O022,bruises,dirt_stem,color_low,no,no,35,
+8719,yuvi_bhinder_farm,pink_lady,2026-05-23,2026-05-23,,O022,holes,lenticel,sunburn_dark,no,no,40,
+8721,pottenger,pink_lady,2026-05-22,2026-05-26,,O022,bruises,dirt_stem,color_low,no,no,40,
 8722,ardrossan,kanzi,2026-04-09,2026-04-14,ardrossan,N003,average_stem,lenticel,dirt_stem,no,no,0,
 8723,ardrossan,kanzi,2026-04-02,2026-04-02,gocup,N003,average_stem,holes,dirt_stem,no,no,0,
+8726,bestview_orchards,pink_lady,2026-05-05,2026-05-09,,O023,scab,bruises,holes,no,yes,40,new decfile applied
+8729,apple_thief,pink_lady,2026-05-17,2026-05-21,,O023,waxy_skin,scab_minor,,no,yes,40,
+8730,sagar_produce,pink_lady,2026-05-26,2026-05-26,,O023,lenticel,holes,,yes,no,40,
+8731,paganfield,pink_lady,2026-05-26,2026-05-26,,O023,color_low,lenticel,san_jose,yes,no,40,
+8732,sciacca,pink_lady,2026-06-10,2026-06-10,contract,O023,bruises,decay,dirt,no,no,40,
+8734,bundara,granny_smith,2026-03-19,2026-03-20,B31,Z011,bitterpit,insect,sunburn_light,no,no,0,
+8735,red_leaf_fresh,bravo,2026-06-10,2026-06-10,,N001,sunburn_major,sunburn_dark,stem_buds,no,no,0,
+8736,ardrossan,kanzi,2026-04-16,2026-04-17,gocup,N003,average_stem,holes,leaf,yes,no,0,
+8737,ardrossan,kanzi,2026-04-14,2026-04-21,ardrossan,N003,average_stem,spots,crack_stem,yes,no,0,
+8738,ardrossan,kanzi,2026-04-16,2026-04-17,woodburn,N003,color_low,holes,small,no,no,0,
+8741,bundara,granny_smith,2026-03-20,2026-03-23,"B31,B33",Z011,sunburn,marks_skin,scald,yes,no,0,
