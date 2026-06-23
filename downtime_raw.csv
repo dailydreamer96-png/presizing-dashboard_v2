@@ -42,4 +42,13 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-06-11,T228,12:18,12:30,0.2,tours,waiting on Jess to bring people on tours
 2026-06-15,T231,08:40,09:03,0.38,truck_unloading,Emma unloading the truck
 2026-06-15,T231,10:00,10:29,0.48,server,power lost
-2026-06-15,T231,10:55,11:17,0.37,server,set it back from the server
+2026-06-15,T231,10:55,11:17,0.37,server,set it back from the server; fruits ovefilled
+2026-06-16,T234,09:02,09:13,0.18,toilet,
+2026-06-16,T234,09:13,09:18,0.08,diabolos,
+2026-06-17,T237,09:16,09:25,0.15,toilet,
+2026-06-17,T240,09:00,09:14,0.23,toilet,
+2026-06-17,T241,11:30,13:27,1.95,bin_arrival,"12 bins galas arrive from Ardrossan, helping at the swinger and replacing solenoid while waiting"
+2026-06-22,T242,07:54,08:26,0.53,sfu2,not enough water
+2026-06-22,T242,09:42,09:57,0.25,ibin_infeed,bin misallocated out the chain
+2026-06-22,T242,10:58,11:05,0.12,diabolos,
+2026-06-22,T242,11:42,11:49,0.12,ibin_infeed,emergency stop due to the misallocation of bin

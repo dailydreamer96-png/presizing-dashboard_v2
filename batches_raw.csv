@@ -208,3 +208,14 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8737,ardrossan,kanzi,2026-04-14,2026-04-21,ardrossan,N003,average_stem,spots,crack_stem,yes,no,0,
 8738,ardrossan,kanzi,2026-04-16,2026-04-17,woodburn,N003,color_low,holes,small,no,no,0,
 8741,bundara,granny_smith,2026-03-20,2026-03-23,"B31,B33",Z011,sunburn,marks_skin,scald,yes,no,0,
+8743,pottenger,pink_lady,2026-05-24,2026-05-24,,O023,color_low,waxy_skin,bruises,yes,no,40,
+8744,googs,pink_lady,2026-05-25,2026-05-25,G8,O023,lenticel,color_low,bruises,yes,yes,40,
+8745,gs_farms_australia,pink_lady,2026-05-25,2026-05-25,,O023,holes,punctures,uneven_skin,yes,yes,40,
+8746,bestview_orchards,pink_lady,2026-05-21,2026-05-21,,O023,scab,holes,bruises,no,yes,40,
+8747,sciacca,pink_lady,2026-06-15,2026-06-16,contract,O023,color_low,bruises,holes,no,no,40,"adjusted on Class 2 low color, extra border applied at office color 565-586"
+8753,ardrossan,kanzi,2026-04-15,2026-04-16,woodburn,N003,bitterpit,average_stem,punctures,no,no,0,"adjusted more juice into c1 as Andrew requested, loose setting preset created"
+8750,ardrossan,kanzi,2026-04-20,2026-04-22,ardrossan,N003,average,,,no,no,0,loose settings
+8756,ardrossan,gala,2026-02-28,2026-03-10,,P004,dirt_stem,dirt_skin,cooked,yes,no,50,
+8758,pine,granny_smith,2026-03-20,2026-03-27,,Z011,dirt_stem,hails,,yes,no,0,
+8760,bundara,pink_lady,2026-05-21,2026-05-22,"B10,B13",O023,lenticel,punctures,granny_smith,yes,yes,40,Prem 54/50 as60
+8761,gs_farms_australia,pink_lady,2026-05-22,2026-05-22,,O023,color_good,calyx_minor,,no,yes,40,
