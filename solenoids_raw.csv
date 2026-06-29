@@ -4,7 +4,7 @@ date_replace,solenoid_id,solenoid_issue,canal_number,lane_number,click_site,reco
 2026-04-29,S5,fine,drop_test,3,fine,right,"short,normal",reuse,,
 2026-04-29,S6,fine,drop_test,2,fine,right,"short,normal",reuse,,
 2026-04-29,S7,water_in,drop_test,1,both,same,"short,normal",reuse,,
-2026-04-30,S3,fine,14,2,fine,left,once in drop test,reuse,,
+2026-04-30,S3,fine,14,2,fine,left,once in drop test,reuse,50,1
 2026-04-30,S4,doucle_click,24,2,left,same,,reuse,,
 2026-04-30,S8,double_click,29,3,right,same,,faulty,,
 2026-04-30,S9,water_in,31,3,both,right,normal,discard_rust,,
@@ -26,5 +26,7 @@ date_replace,solenoid_id,solenoid_issue,canal_number,lane_number,click_site,reco
 2026-06-04,S25,fine,24,2,fine,left,normal,reuse,,
 2026-06-04,S26,fine,31,2,fine,left,normal,reuse,12,2
 2026-06-04,S27,fine,31,3,fine,right,normal,reuse,24,2
-2026-06-09,S22,half_click,24,2,left,left,58,reuse,,
+2026-06-09,S22,half_click,24,2,left,left,58,reuse,52,2
 2026-06-18,S28,water_in,12,2,both,both,normal,discard_rust,,
+2026-06-25,S29,double_click,50,1,right,right,normal,,,
+2026-06-25,S30,water_in,52,2,both,right,normal,,,

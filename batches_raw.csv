@@ -219,3 +219,11 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8758,pine,granny_smith,2026-03-20,2026-03-27,,Z011,dirt_stem,hails,,yes,no,0,
 8760,bundara,pink_lady,2026-05-21,2026-05-22,"B10,B13",O023,lenticel,punctures,granny_smith,yes,yes,40,Prem 54/50 as60
 8761,gs_farms_australia,pink_lady,2026-05-22,2026-05-22,,O023,color_good,calyx_minor,,no,yes,40,
+8763,ardrossan,kanzi,2026-04-20,2026-04-20,ardrossan,N003,spots,crack_stem,hails,no,no,0,
+8765,ardrossan,granny_smith,2026-04-28,2026-04-28,woodburn,Z011,insect,blush,sunburn,no,no,0,
+8766,ardrossan,granny_smith,2026-04-28,2026-04-30,gocup,Z011,insect,blush,sunburn,no,no,0,
+8767,ardrossan,granny_smith,2026-04-28,2026-05-01,ardrossan,Z011,sunburn,color_light,,no,no,0,
+8769,ardrossan,pink_lady,2026-05-22,2026-05-23,ardrossan,O023,color_low,insect,russets_net,no,no,40,
+8770,ardrossan,pink_lady,2026-05-20,2026-05-21,woodburn,O023,color_low,hails,russets_net,no,no,40,
+8772,bestview_orchards,pink_lady,2026-05-16,2026-05-16,,O023,scab_dark,bruises,color_low,no,yes,40,
+8773,ardrossan,kanzi,2026-04-19,2026-04-20,ardrossan,N003,lenticel,bitterpit,average_stem,yes,no,0,

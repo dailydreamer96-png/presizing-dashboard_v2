@@ -52,3 +52,5 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-06-22,T242,09:42,09:57,0.25,ibin_infeed,bin misallocated out the chain
 2026-06-22,T242,10:58,11:05,0.12,diabolos,
 2026-06-22,T242,11:42,11:49,0.12,ibin_infeed,emergency stop due to the misallocation of bin
+2026-06-24,T245,08:14,08:32,0.3,various,"sticker machine, toilet"
+2026-06-25,T249,07:00,07:30,0.5,lights,"no lights on the grading area, we ended up running without light"
