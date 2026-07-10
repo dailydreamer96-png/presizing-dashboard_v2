@@ -29,4 +29,4 @@ date_replace,solenoid_id,solenoid_issue,canal_number,lane_number,click_site,reco
 2026-06-09,S22,half_click,24,2,left,left,58,reuse,52,2
 2026-06-18,S28,water_in,12,2,both,both,normal,discard_rust,,
 2026-06-25,S29,double_click,50,1,right,right,normal,,,
-2026-06-25,S30,water_in,52,2,both,right,normal,,,
+2026-06-25,S30,water_in,52,2,both,right,normal,discard_rust,,
