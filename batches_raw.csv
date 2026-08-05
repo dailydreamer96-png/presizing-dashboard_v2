@@ -251,4 +251,16 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8821,googs,pink_lady,2026-05-22,2026-05-23,G6,O023,bruises,color_low,hails,no,yes,50,"adjusted all low color to C1, Class 2 only have C2Q"
 8822,googs,pink_lady,2026-05-22,2026-05-22,G7,O023,lenticel,bruises,granny_smith,no,yes,50,
 8823,plunketts,pink_lady,2026-05-12,2026-05-14,P12,O023,dirt_stem,holes,,no,no,50,
-8831,sibio,bravo,2026-04-20,2026-04-21,,N001,holes,green,,yes,no,0,
+8831,sibio,bravo,2026-04-20,2026-04-21,gocup,N001,holes,green,,yes,no,0,
+8832,ardrossan,bravo,2026-04-23,2026-04-25,gocup,N001,average,,,yes,no,0,GC1
+8833,ardrossan,bravo,2026-04-23,2026-04-24,gocup,N001,average,,,yes,no,0,GC2
+8834,bundara,granny_smith,2026-04-08,2026-04-13,"B12,B16",Z011,dirt_skin,sunburn_minor,holes,no,no,0,
+8836,ardrossan,kanzi,2026-03-31,2026-04-01,gocup,N003,average_stem,russets_stem,,yes,no,0,
+8837,ardrossan,kanzi,2026-03-31,2026-03-31,ardrossan,N003,dirt_stem,average_stem,,no,no,0,
+8846,ardrossan,pink_lady,2026-05-15,2026-05-15,ardrossan,O023,insect,bruises,,no,no,50,
+8848,ardrossan,pink_lady,2026-05-06,2026-05-15,gocup,O023,hails,insect,,no,no,50,
+8849,ardrossan,pink_lady,2026-05-05,2026-05-20,woodburn,O023,punctures,lenticel,,no,no,50,
+8850,seven_springs,kanzi,2026-07-16,2026-07-16,,N003,decay_stem,,,yes,no,0,
+8851,sciacca,pink_lady,2026-08-03,2026-08-03,contract,O023,color_low,hails,rots,yes,no,0,No color & C2C separated into Odd Bunch
+8853,ardrossan,kanzi,2026-04-02,2026-04-02,gocup,N003,decay_stem,crack_stem,,yes,no,0,
+8854,ardrossan,kanzi,2026-04-09,2026-04-14,ardrossan,N003,bitterpit,average,,yes,no,0,
