@@ -61,3 +61,6 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-07-22,T276,07:00,07:16,0.27,sfu1,water level low
 2026-07-23,T281,15:26,15:53,0.45,"diabolos,cup,toilet","1 biabolo, 4 cups"
 2026-07-27,T282,08:03,08:10,0.12,diabolos,
+2026-08-07,T303,07:00,08:44,1.73,server,30 mins to troubleshoot and restart server before calling for helpethercat error? Blue and Cam fixed
+2026-08-07,T304,09:28,09:48,0.33,ifa,"no code, Blue and Cam fixed"
+2026-08-17,T311,11:55,12:13,0.3,bin_broken,masalki bin

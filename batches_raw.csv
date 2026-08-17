@@ -264,3 +264,15 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8851,sciacca,pink_lady,2026-08-03,2026-08-03,contract,O023,color_low,hails,rots,yes,no,0,No color & C2C separated into Odd Bunch
 8853,ardrossan,kanzi,2026-04-02,2026-04-02,gocup,N003,decay_stem,crack_stem,,yes,no,0,
 8854,ardrossan,kanzi,2026-04-09,2026-04-14,ardrossan,N003,bitterpit,average,,yes,no,0,
+8858,bundara,granny_smith,2026-04-11,2026-04-13,"B12,B16,B22",Z011,clean,bitterpit,major,yes,no,0,
+8859,paganfield,pink_lady,2026-05-25,2026-05-26,,O023,san_jose,major,leaf,yes,no,50,
+8860,plunketts,pink_lady,2026-05-12,2026-05-20,P12,O023,granny_smith,average,,no,yes,50,adjusted color red% to 592
+8861,sagar produce,pink_lady,2026-05-27,2026-05-28,,O023,lenticel,holes,,yes,yes,50,
+8864,bundara,pink_lady,2026-05-27,2026-05-27,B5,O023,lenticel,color_low,,yes,yes,50,
+8865,pottenger,pink_lady,2026-05-20,2026-05-20,,O023,lenticel,,,no,yes,50,
+8868,bundara,granny_smith,2026-04-12,2026-04-13,"B22,B16",O023,clean,sunburn,major,no,no,0,
+8869,gs_farms_australia,pink_lady,2026-04-25,2026-04-29,,O023,lenticel,major,spot_white,yes,yes,50,
+8870,ardrossan,kanzi,2026-04-09,2026-04-13,,N003,average,,,yes,no,0,
+8874,ardrossan,gala,2026-02-26,2026-03-10,ardrossan,P004,decay,bitterpit,dirt_stem,yes,no,0,"ardrossan x 80, gocup x 5"
+8876,bestview_orchards,pink_lady,2026-05-05,2026-05-09,,O023,scab,holes,brown,no,yes,50,
+8878,sagar ardmona,pink_lady,2026-04-24,2026-05-09,,O023,calyx_minor,sunburn,lenticel,yes,yes,50,
