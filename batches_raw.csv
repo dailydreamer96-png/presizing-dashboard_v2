@@ -276,3 +276,27 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8874,ardrossan,gala,2026-02-26,2026-03-10,ardrossan,P004,decay,bitterpit,dirt_stem,yes,no,0,"ardrossan x 80, gocup x 5"
 8876,bestview_orchards,pink_lady,2026-05-05,2026-05-09,,O023,scab,holes,brown,no,yes,50,
 8878,sagar ardmona,pink_lady,2026-04-24,2026-05-09,,O023,calyx_minor,sunburn,lenticel,yes,yes,50,
+8879,bundara,pink_lady,2026-04-21,2026-04-28,B15,O023,lenticel,rots,major,yes,yes,50,
+8880,bundara,pink_lady,2026-05-05,2026-05-08,B14,O023,lenticel,holes,,no,yes,50,
+8881,ardrossan,swing,2026-05-01,2026-05-01,,,,,,no,no,0,
+8882,kaarimba,bravo,2026-08-18,2026-08-18,,N001,holes,crack_skin,stem_buds,yes,no,0,
+8884,bundara,granny_smith,2026-04-08,2026-04-08,"B22,B12",Z011,bitterpit,holes,,no,no,0,
+8886,bundara,pink_lady,2026-04-21,2026-04-29,"B15,B18,B23",O023,lenticel,major,granny_smith,yes,yes,45,"only Premium and the rest mark as Straight Pick into red bin, Green%: from 322 to 335"
+8887,barry_bloggo,mixed,,,Orchard Hills,,,,,,,,transfering juice into red bin
+8888,seven_springs,kanzi,2026-04-03,2026-04-08,,N003,holes,bitterpit,rots,yes,no,0,
+8890,ardrossan,kanzi,2026-04-07,2026-04-09,,N003,stem_average,bitterpit,,yes,no,0,
+8893,bundara,pink_lady,2026-05-07,2026-05-08,"B7,B19",O023,lenticel,major,granny_smith,yes,yes,50,
+8897,googs,pink_lady,2026-05-14,2026-05-15,"G6,G7",O023,lenticel,holes,bruises,yes,yes,50,
+8898,kaarimba,bravo,2026-08-17,2026-08-18,,N001,decay,dirt_stem,major,yes,no,0,
+8899,ardrossan,bravo,2026-04-23,2026-04-24,,N001,holes,scab,,yes,no,0,GC2
+8902,ardrossan,bravo,2026-04-23,2026-04-23,gocup,N001,,,,yes,no,0,GC1
+8901,ardrossan,bravo,2026-04-25,2026-04-25,gocup,N001,,,,yes,no,0,
+8903,bundara,granny_smith,2026-04-07,2026-04-10,B22,Z011,major,holes,sunburn,yes,no,0,
+8905,bundara,granny_smith,2026-04-07,2026-04-10,B12,Z011,bitterpit,,,yes,no,0,
+8906,punjab,pink_lady,2026-06-01,2026-06-01,,Z011,lenticel,major,decay,yes,no,0,
+8909,ardrossan,gala,2026-02-23,2026-02-26,,P002,small,bitterpit,holes,yes,no,50,
+8911,ardrossan,kanzi,2026-04-07,2026-04-08,"ardrossan,gocup",N003,rots,bitterpit,stem_average,yes,no,0,
+8912,paganfield,pink_lady,2026-05-15,2026-05-15,,O023,holes,color_low,,yes,yes,40,
+8913,bundara,pink_lady,2026-05-12,2026-05-14,"B18,B24",O023,lenticel,holes,decay,yes,yes,40,
+8914,plunketts,pink_lady,2026-04-24,2026-04-24,P24,O023,holes,lenticel,,no,yes,40,
+8915,pottenger,pink_lady,2026-05-12,2026-05-14,,O023,clean,,,yes,yes,40,

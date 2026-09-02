@@ -64,3 +64,7 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-08-07,T303,07:00,08:44,1.73,server,30 mins to troubleshoot and restart server before calling for helpethercat error? Blue and Cam fixed
 2026-08-07,T304,09:28,09:48,0.33,ifa,"no code, Blue and Cam fixed"
 2026-08-17,T311,11:55,12:13,0.3,bin_broken,masalki bin
+2026-08-20,T321,09:11,09:55,0.73,bin_arrival,waiting on bins to come from C5
+2026-08-25,T324,07:00,08:29,1.48,ibin_dumper,rotation moving on one direction and not 
+2026-09-01,T336,09:26,09:34,0.13,diabolos,
+2026-09-01,T337,13:59,14:33,0.57,bin_arrival,bin arriving from Ardrossan
