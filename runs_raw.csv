@@ -1,5 +1,5 @@
 run_date,run_id,operator_machine,operator_quality,start_time,end_time,grower,variety,batch_id,receival_date_min,receival_date_max,bins_run,retip,premium_rate,c1_color_rate,c1_quality_rate,c2_color_rate,c2_quality_rate,no_color_rate,juice_rate,test_drop_count,test_drop_kg,size_distribution,Speed_12,Speed_34,Speed_56,full_speed,notes_run
-2023-11-28,R001,,,07:07,11:50,sciacca,pink_lady,,,,131,0,,,,,,,,,,,,,,,SFU1 filler's part fell; bin's bottom broke ( 8.40AM – 9.20AM )
+2023-11-28,R001,,,07:07,11:50,sciacca,pink_lady,,,,131,0,,,,,,,,,,,,,,,SFU1 filler's part fell; bin's bottom broke ( 8.40AM â€“ 9.20AM )
 2023-11-28,R002,,,13:10,16:00,ardrossan,pink_lady,,,,80,0,,,,,,,,,,,,,,,
 2023-11-29,R003,,,06:50,13:45,jeftomson,pink_lady,,,,271,0,,,,,,,,,,,,,,,
 2023-11-29,R004,,,14:45,19:30,bundara,granny_smith,,,,150,0,,,,,,,,,,,,,,,B-33 (126) & B-12 (24)
@@ -29,8 +29,8 @@ run_date,run_id,operator_machine,operator_quality,start_time,end_time,grower,var
 2024-01-10,R028,,,14:30,16:50,bundara,granny_smith,,,,80,0,,,,,,,,,,,,,,,iFA down; change to GS
 2024-01-11,R029,,,07:00,11:30,bundara,granny_smith,,,,118,0,,,,,,,,,,,,,,,iFA down
 2024-01-11,R030,,,12:30,17:00,jeftomson,pink_lady,,,,110,0,,,,,,,,,,,,,,,"Wrong problem hence 40 bins need retip, no browning (no iFA)"
-2024-01-12,R031,,,07:00,12:45,jeftomson,pink_lady,,,,113,0,,,,,,,,,,,,,,,"iFA worked in the morning, browning problem showing 3.5 – 4"
-2024-01-12,R032,,,13:30,16:30,ardrossan,pink_lady,,,,84,0,,,,,,,,,,,,,,,Manual tipping:56; browning 6.5 – 7
+2024-01-12,R031,,,07:00,12:45,jeftomson,pink_lady,,,,113,0,,,,,,,,,,,,,,,"iFA worked in the morning, browning problem showing 3.5 â€“ 4"
+2024-01-12,R032,,,13:30,16:30,ardrossan,pink_lady,,,,84,0,,,,,,,,,,,,,,,Manual tipping:56; browning 6.5 â€“ 7
 2024-01-13,R033,,,06:18,09:30,ardrossan,pink_lady,,,,59,0,,,,,,,,,,,,,,,iFA back on
 2024-01-13,R034,,,10:20,11:30,ardrossan,pink_lady,,,,56,0,,,,,,,,,,,,,,, 
 2024-01-15,R035,,,07:00,16:37,bundara,granny_smith,,,,250,0,,,,,,,,,,,,,,,Driving Rack 1 needed reference couple times in the morning
