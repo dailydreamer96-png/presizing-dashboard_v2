@@ -300,3 +300,59 @@ batch_id,grower,variety,receival_date_min,receival_date_max,grower_block,decfile
 8913,bundara,pink_lady,2026-05-12,2026-05-14,"B18,B24",O023,lenticel,holes,decay,yes,yes,40,
 8914,plunketts,pink_lady,2026-04-24,2026-04-24,P24,O023,holes,lenticel,,no,yes,40,
 8915,pottenger,pink_lady,2026-05-12,2026-05-14,,O023,clean,,,yes,yes,40,
+8920,ardrossan,kanzi,2026-03-30,2026-03-31,ardrossan,N003,decay_stem,average_stem,,no,no,0,
+8921,ardrossan,kanzi,2026-03-30,2026-04-01,woodburn,N003,bitterpit,decay_stem,average_stem,yes,no,0,
+8923,seven_springs,kanzi,2026-04-04,2026-04-07,,N003,bitterpit,rots,,yes,no,0,
+8924,ardrossan,bravo,2026-04-22,2026-04-23,ardrossan,N001,cuts,decay,,no,no,0,
+8925,ardrossan,bravo,2026-04-23,2026-04-25,gocup,N001,clean,,,yes,no,0,
+8930,pottenger,pink_lady,2026-05-12,2026-05-14,,O023,lenticel,,,yes,no,40,
+8931,bundara,granny_smith,2026-03-18,2026-03-19,B31,Z011,bitterpit,,,yes,no,0,
+8932,bundara,granny_smith,2026-04-15,2026-04-15,B12,Z011,clean,,,no,no,0,
+8933,ardrossan,pink_lady,2026-05-13,2026-05-13,woodburn,O023,holes,,,yes,yes,40,all as premium
+8934,ardrossan,pink_lady,2026-05-13,2026-05-15,ardrossan,O023,clean,insect,,no,yes,40,
+8935,ardrossan,pink_lady,2026-05-15,2026-05-15,ardrossan (organic),O023,decay,color_low,,yes,no,40,all as C1
+8936,ardrossan,kanzi,2026-03-29,2026-03-30,,N003,,,,yes,no,0,
+8940,googs,pink_lady,2026-05-16,2026-05-17,"G6,G8",O023,lenticel,major,russets_net,no,no,40,
+8948,ardrossan,bravo,2026-04-24,2026-04-24,gocup,N001,clean,decay,,yes,no,0,Preset: Bravo Clean 
+8949,ardrossan,bravo,2026-04-23,2026-04-24,ardrossan,N001,clean,rots,,yes,no,0,Preset: Bravo Clean 
+8950,ardrossan,kanzi,2026-03-28,2026-03-29,ardrossan,N003,decay_stem,dirt_stem,,yes,no,0,
+8952,bundara,granny_smith,2026-04-14,2026-04-15,"B12,B16,B22",Z011,clean,,,yes,no,0,
+8957,pottenger,pink_lady,2026-05-15,2026-05-15,,O023,holes,,,yes,yes,40,Prem: 90-165
+8958,googs,pink_lady,2026-05-15,2026-05-15,G6,O023,hails,bruises,,yes,yes,40,"High Prem(65): 66,70; Prem: 90-165"
+8960,googs,pink_lady,2026-05-16,2026-05-16,G8,O023,lenticel,,,yes,yes,40,
+8959,bundara,pink_lady,2026-05-16,2026-05-16,"B5,B24",O023,russets_net,hails,,yes,yes,40,
+8962,paganfield,granny_smith,2026-03-30,2026-04-02,,Z011,holes,major,,yes,no,0,
+8963,bundara,granny_smith,2026-04-08,2026-04-15,B16,Z011,small,,,yes,no,0,
+8964,sagar produce,granny_smith,2026-04-11,2026-04-11,,Z011,small,sunburn,russets,yes,no,0,
+8966,ardrossan,kanzi,2026-03-28,2026-03-29,ardrossan,N003,decay,,,yes,no,0,
+8969,ardrossan,bravo,2026-04-25,2026-04-26,gocup,N001,,,,yes,no,0,
+8971,acn_orchards,granny_smith,,,,Z011,sunburn,marks_skin,,yes,no,0,
+8972,gs_farms_australia,pink_lady,2026-04-30,2026-05-02,,O023,lenticel,shrivel,decay_stem,yes,yes,40,
+8974,paganfield,pink_lady,2026-05-16,2026-05-16,,O023,color_low,chemical_burns,sunburn_major,yes,yes,40,
+8975,acn_orchards,pink_lady,2026-05-22,2026-05-22,,O023,clean,dirt_stem,,yes,yes,40,
+8978,ardrossan,kanzi,2026-03-25,2026-03-28,,N003,decay,decay_stem,,yes,no,0,
+8979,ardrossan,pink_lady,2026-05-13,2026-05-14,,O023,clean,,,yes,no,0,
+8980,seven_springs,kanzi,2026-04-03,2026-04-08,,N003,crack_stem,rots,,yes,no,0,
+8984,sciacca,granny_smith,,,contract,Z011,clean,sunburn,holes,no,no,0,
+8985,sciacca,pink_lady,,,contract,Z011,rots,decay,,yes,no,0,
+8988,barry_bloggo,mixed,,,juice,,rots,,,no,no,0,juice run
+8991,ardrossan,pink_lady,2026-05-17,2026-05-17,organic,O023,rots,color_low,,yes,no,40,
+8992,bundara,pink_lady,2026-05-02,2026-05-04,mixed,O023,major,,,yes,yes,40,"High Prem(70): 66,70,76; no Prem"
+8995,bundara,granny_smith,2026-03-24,2026-03-26,"B32,B33",Z011,sunburn,,,yes,no,0,
+8997,acn_orchards,granny_smith,,,,Z011,russets,,,yes,no,0,
+9005,bundara,granny_smith,2026-03-24,2026-03-26,"B32,B33",Z011,sunburn_major,dirt_stem,,yes,no,0,
+9006,bundara,pink_lady,2026-04-29,2026-05-20,"B1,B7,B9,B10",O023,major,major,,yes,yes,40,"High Prem(70): 66,70,76,82,90,150; no Prem"
+9009,sciacca,pink_lady,,,,O023,color_low,decay,rots,yes,no,0,206 wb; 70 pb
+9013,ardrossan,sunrise_magic,2026-04-29,2026-04-29,,N005,rots,brown,crack_stem,yes,no,0,
+9014,acn_orchards,pink_lady,,,,O023,dirt,color_low,,yes,yes,40,"High Prem(70): 66,70,76,82,90,150; no Prem"
+9015,acn_orchards,pink_lady,,,,O023,,,,yes,yes,40,
+9016,barry_bloggo,mixed,,,,,rots,,,no,no,0,
+9020,bundara,pink_lady,2026-05-12,2026-05-19,"B1,B5,B7,B9,B10",O023,major,lenticel,,yes,yes,40,"High Prem(70): 66,70,76,82,90,150"
+9024,bundara,pink_lady,2026-05-11,2026-05-12,"B1,B7,B18,B24",O023,lenticel,major,,yes,yes,40,"High Prem(70): 66,70,76,82,90,150"
+9027,acn_orchards,granny_smith,,,,Z011,,,,yes,no,0,
+9028,bundara,granny_smith,2026-03-23,2026-03-24,"B31,B33",Z011,bitterpit,brown,,yes,no,0,
+9029,ardrossan,pink_lady,2026-05-09,2026-05-10,organic,O023,decay,brown,,yes,yes,60,"Prem 60-82,150"
+9031,barry_bloggo,mixed,,,juice,,decay,,,no,no,0,
+9034,acn_orchards,pink_lady,2026-05-08,2026-05-11,,O023,dirt,,,yes,yes,70,"Prem 60-76,90,150"
+9035,googs,pink_lady,2026-05-17,2026-05-17,G8,O023,russets_net,lenticel,,yes,yes,70,
+9036,bundara,pink_lady,2026-05-09,2026-05-11,"B1,B5,B7",O023,lenticel,clean,,yes,yes,60-70,

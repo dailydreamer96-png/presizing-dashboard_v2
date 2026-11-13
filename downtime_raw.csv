@@ -68,3 +68,17 @@ run_date,run_id,downtime_start,downtime_end,duration_hours,downtime_area,downtim
 2026-08-25,T324,07:00,08:29,1.48,ibin_dumper,rotation moving on one direction and not 
 2026-09-01,T336,09:26,09:34,0.13,diabolos,
 2026-09-01,T337,13:59,14:33,0.57,bin_arrival,bin arriving from Ardrossan
+2026-09-15,T354,14:20,14:39,0.32,ibin_dumper,"Jennis manually move too far to the left,Blure got a cage to left up and fix"
+2026-09-28,T360,07:00,08:06,1.1,camera,"Led controller, Cam fix"
+2026-09-30,T368,07:09,09:11,2.03,infeed,some brushes is not moving
+2026-09-30,T368,09:16,09:35,0.32,bin_broken,
+2026-09-30,T368,10:35,12:02,1.45,infeed,chain broke the second time
+2026-10-01,T369,09:07,15:16,6.15,bin_arrival,bins from Ardrossan arrived @2;30; we did cleanining and helping at combi
+2026-10-05,T370,07:00,08:26,1.43,machine_main,not able to start as the brush is down
+2026-10-09,T377,08:28,10:53,2.42,bin_arrival,bins from Seven Springs
+2026-10-09,T377,10:53,14:46,3.88,helping,combi packing kanzi
+2026-10-20,T386,11:31,11:45,0.23,conveyor_belt,bearing issue with sounds
+2026-10-20,T387,12:13,12:30,0.28,bin_arrival,waiting on bins from ACN and unloding the truck
+2026-10-28,T392,07:00,11:00,4,diabolos,shaft is broken and chain came off
+2026-10-30,T396,07:28,07:48,0.33,labeller,card untached from the labeller
+2026-10-30,T398,15:48,16:15,0.45,bin_matic,bin fallen as bin matic lost sync
